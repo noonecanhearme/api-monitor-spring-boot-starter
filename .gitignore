@@ -83,3 +83,5 @@ settings.xml
 gpg_public_key.asc
 test_sign.txt
 test_sign.txt.sig
+generate_checksums.ps1
+MANUAL_UPLOAD_GUIDE.md
