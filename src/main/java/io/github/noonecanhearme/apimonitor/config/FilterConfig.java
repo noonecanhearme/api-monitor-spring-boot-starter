@@ -4,6 +4,7 @@ import io.github.noonecanhearme.apimonitor.ApiMonitorProperties;
 import io.github.noonecanhearme.apimonitor.filter.RequestCachingFilter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import javax.servlet.Filter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -18,8 +19,8 @@ public class FilterConfig {
      */
     @Bean
     @ConditionalOnProperty(prefix = "api.monitor", name = "enabled", havingValue = "true")
-    public FilterRegistrationBean<RequestCachingFilter> requestCachingFilter(ApiMonitorProperties properties) {
-        FilterRegistrationBean<RequestCachingFilter> registrationBean = new FilterRegistrationBean<>();
+    public FilterRegistrationBean requestCachingFilter(ApiMonitorProperties properties) {
+        FilterRegistrationBean registrationBean = new FilterRegistrationBean<>();
         registrationBean.setFilter(new RequestCachingFilter());
         registrationBean.addUrlPatterns("/*");
         registrationBean.setOrder(Integer.MIN_VALUE + 1); // 设置较高优先级

@@ -4,6 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Set;
 
 /**
  * API监控配置属性类
@@ -231,6 +232,16 @@ public class ApiMonitorProperties {
          * 火焰图采样时长（毫秒）
          */
         private int samplingDuration = 1000;
+        
+        /**
+         * 火焰图采样率（毫秒）
+         */
+        private int samplingRate = 50;
+        
+        /**
+         * 是否生成SVG格式火焰图
+         */
+        private boolean generateSvg = true;
 
         // getter和setter方法
         public boolean isEnabled() {
@@ -255,6 +266,22 @@ public class ApiMonitorProperties {
 
         public void setSamplingDuration(int samplingDuration) {
             this.samplingDuration = samplingDuration;
+        }
+        
+        public int getSamplingRate() {
+            return samplingRate;
+        }
+        
+        public void setSamplingRate(int samplingRate) {
+            this.samplingRate = samplingRate;
+        }
+        
+        public boolean isGenerateSvg() {
+            return generateSvg;
+        }
+        
+        public void setGenerateSvg(boolean generateSvg) {
+            this.generateSvg = generateSvg;
         }
     }
 }

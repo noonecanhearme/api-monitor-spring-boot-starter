@@ -25,18 +25,16 @@ import java.util.stream.Collectors;
 public class FlameGraphGenerator {
 
     private static final Logger logger = LoggerFactory.getLogger(FlameGraphGenerator.class);
+    
+    // 常量定义
     private static final int MAX_STACK_DEPTH = 50;
-    private static final int MIN_SAMPLE_COUNT = 2;
+    private static final int MIN_SAMPLE_COUNT = 10;
     
     private final ApiMonitorProperties properties;
     private final ThreadMXBean threadMXBean;
     private final Map<String, ProfilerTask> activeProfilerTasks = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(5);
     private final File flameGraphDir;
-    
-    // 常量定义
-    private static final int MAX_STACK_DEPTH = 30;
-    private static final int MIN_SAMPLE_COUNT = 10;
 
     public FlameGraphGenerator(ApiMonitorProperties properties) {
         this.properties = properties;

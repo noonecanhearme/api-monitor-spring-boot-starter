@@ -3,8 +3,8 @@ package io.github.noonecanhearme.apimonitor;
 import io.github.noonecanhearme.apimonitor.entity.ApiLogEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.StringUtils;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.HashMap;
 import java.util.Map;

@@ -5,8 +5,8 @@ import io.github.noonecanhearme.apimonitor.ApiLogger;
 import io.github.noonecanhearme.apimonitor.FlameGraphGenerator;
 import io.github.noonecanhearme.apimonitor.annotation.EnableFlameGraph;
 import io.github.noonecanhearme.apimonitor.entity.ApiLogEntity;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -229,8 +229,8 @@ public class ApiLogAspect {
     private String extractRequestBody(HttpServletRequest request) {
         try {
             // 如果请求已经被包装为CachedBodyHttpServletRequest，则直接获取缓存的请求体
-            if (request instanceof yandac.apimonitor.filter.CachedBodyHttpServletRequest) {
-                return ((yandac.apimonitor.filter.CachedBodyHttpServletRequest) request).getCachedBody();
+            if (request instanceof io.github.noonecanhearme.apimonitor.filter.CachedBodyHttpServletRequest) {
+                return ((io.github.noonecanhearme.apimonitor.filter.CachedBodyHttpServletRequest) request).getCachedBody();
             }
             return "[未包装的请求，无法读取请求体]";
         } catch (Exception e) {
@@ -286,4 +286,6 @@ public class ApiLogAspect {
                lowerHeader.contains("password") ||
                properties.getSensitiveHeaders().contains(lowerHeader);
     }
+
+
 }
