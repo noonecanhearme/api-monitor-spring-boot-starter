@@ -80,3 +80,6 @@ settings.xml
 !.vscode/launch.json
 !.vscode/extensions.json
 .history/*
+gpg_public_key.asc
+test_sign.txt
+test_sign.txt.sig
