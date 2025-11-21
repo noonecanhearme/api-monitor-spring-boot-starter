@@ -21,6 +21,11 @@ public class ApiMonitorProperties {
      * 日志记录方式：log（默认）或 database
      */
     private String logType = "log";
+    
+    /**
+     * 日志文件保存路径，默认为系统临时目录
+     */
+    private String logFilePath = System.getProperty("java.io.tmpdir") + "/api-monitor-logs";
 
     /**
      * 数据库配置
@@ -167,6 +172,14 @@ public class ApiMonitorProperties {
     
     public void setResponseBodyMaxLength(int responseBodyMaxLength) {
         this.responseBodyMaxLength = responseBodyMaxLength;
+    }
+    
+    public String getLogFilePath() {
+        return logFilePath;
+    }
+    
+    public void setLogFilePath(String logFilePath) {
+        this.logFilePath = logFilePath;
     }
 
     /**
