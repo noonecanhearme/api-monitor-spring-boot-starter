@@ -6,7 +6,7 @@
 
     <groupId>io.github.noonecanhearme</groupId>
     <artifactId>api-monitor-spring-boot-starter</artifactId>
-    <version>1.0.1</version>
+    <version>1.0.2</version>
     <packaging>jar</packaging>
 
     <name>api-monitor-spring-boot-starter</name>
@@ -58,6 +58,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-data-redis</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -66,6 +72,10 @@
                 <exclusion>
                     <groupId>javax.servlet</groupId>
                     <artifactId>javax.servlet-api</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-data-redis</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -220,8 +230,39 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- 添加distributionManagement配置，确保文件路径格式正确 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.6.0</version>
+                <configuration>
+                    <appendAssemblyId>false</appendAssemblyId>
+                    <attach>false</attach>
+                    <descriptorRefs>
+                        <descriptorRef>jar-with-dependencies</descriptorRef>
+                    </descriptorRefs>
+                </configuration>
+            </plugin>
+            <!-- 添加生成MD5和SHA1校验和的插件 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-install-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <createChecksum>true</createChecksum>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
+    
+    <!-- 添加distributionManagement配置，确保正确的文件路径格式 -->
+    <distributionManagement>
+        <repository>
+            <id>central</id>
+            <name>Sonatype Central Repository</name>
+            <url>https://central.sonatype.com/api/v1/publisher</url>
+        </repository>
+    </distributionManagement>
 
     <profiles>
         <profile>
@@ -239,6 +280,33 @@
                                 <goals>
                                     <goal>sign</goal>
                                 </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- 使用antrun插件生成MD5和SHA1校验和文件 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>create-checksums</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <checksum file="${project.build.directory}/${project.build.finalName}.jar" algorithm="MD5" fileext=".md5"/>
+                                        <checksum file="${project.build.directory}/${project.build.finalName}.jar" algorithm="SHA-1" fileext=".sha1"/>
+                                        <checksum file="${project.build.directory}/${project.build.finalName}-sources.jar" algorithm="MD5" fileext=".md5"/>
+                                        <checksum file="${project.build.directory}/${project.build.finalName}-sources.jar" algorithm="SHA-1" fileext=".sha1"/>
+                                        <checksum file="${project.build.directory}/${project.build.finalName}-javadoc.jar" algorithm="MD5" fileext=".md5"/>
+                                        <checksum file="${project.build.directory}/${project.build.finalName}-javadoc.jar" algorithm="SHA-1" fileext=".sha1"/>
+                                        <checksum file="${project.build.directory}/${project.build.finalName}.pom" algorithm="MD5" fileext=".md5"/>
+                                        <checksum file="${project.build.directory}/${project.build.finalName}.pom" algorithm="SHA-1" fileext=".sha1"/>
+                                    </target>
+                                </configuration>
                             </execution>
                         </executions>
                     </plugin>
