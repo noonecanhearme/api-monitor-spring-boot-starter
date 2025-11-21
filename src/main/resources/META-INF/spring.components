@@ -1,3 +1,1 @@
-io.github.noonecanhearme.apimonitor.ApiMonitorAutoConfiguration=org.springframework.stereotype.Component
-io.github.noonecanhearme.apimonitor.config.FilterConfig=org.springframework.stereotype.Component
-io.github.noonecanhearme.apimonitor.ApiMonitorProperties=org.springframework.stereotype.Component
+# 仅使用Spring Boot的自动配置机制，不指定具体的组件类型，避免影响依赖项目的组件扫描

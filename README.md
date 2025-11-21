@@ -29,7 +29,7 @@
 <dependency>
     <groupId>io.github.noonecanhearme</groupId>
     <artifactId>api-monitor-spring-boot-starter</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.2</version>
 </dependency>
 ```
 
@@ -55,7 +55,7 @@
 
 ### 3. 配置组件
 
-在Spring Boot应用的`application.properties`或`application.yml`中配置：
+在Spring Boot应用的配置文件(`application.properties`或`application.yml`)中添加以下配置：
 
 ```yaml
 # API监控配置
@@ -64,6 +64,8 @@ api:
     enabled: true
     # 日志记录方式：log（默认）或 database
     log-type: log
+    # 日志文件保存路径（当log-type为log时有效）
+    log-path: ./logs/api-monitor.log
     # 是否记录请求体
     log-request-body: true
     # 是否记录响应体
@@ -86,6 +88,10 @@ api:
       save-path: ./flamegraphs
       # 火焰图采样时长（毫秒）
       sampling-duration: 1000
+      # 火焰图采样率（毫秒）
+      sampling-rate: 50
+      # 火焰图输出格式，支持 html、svg、json
+      format: html
 ```
 
 ### 4. 使用示例
@@ -112,10 +118,17 @@ public class TestController {
         // 业务逻辑
         return "success";
     }
+    
+    @GetMapping("/complex")
+    @EnableFlameGraph(samplingDuration = 3000, samplingRate = 20)
+    public String complexOperation() {
+        // 复杂业务逻辑
+        return "completed";
+    }
 }
 ```
 
-调用该接口后，火焰图数据文件将生成在配置的路径下。
+调用该接口后，火焰图文件将按照配置的格式（html、svg或json）生成在指定的保存路径下。
 
 ## 配置说明
 
@@ -123,6 +136,7 @@ public class TestController {
 
 - `api.monitor.enabled`：是否启用API监控，默认true
 - `api.monitor.log-type`：日志记录方式，可选值：log（日志文件）、database（数据库）
+- `api.monitor.log-path`：日志文件保存路径（当log-type为log时有效），默认./logs/api-monitor.log
 - `api.monitor.log-request-body`：是否记录请求体，默认true
 - `api.monitor.log-response-body`：是否记录响应体，默认true
 - `api.monitor.ignore-paths`：需要忽略的URL路径数组
@@ -138,6 +152,8 @@ public class TestController {
 - `api.monitor.flame-graph.enabled`：是否启用火焰图生成，默认false
 - `api.monitor.flame-graph.save-path`：火焰图保存路径，默认./flamegraphs
 - `api.monitor.flame-graph.sampling-duration`：火焰图采样时长（毫秒），默认1000
+- `api.monitor.flame-graph.sampling-rate`：火焰图采样率（毫秒），默认50
+- `api.monitor.flame-graph.format`：火焰图输出格式，支持html、svg、json，默认html
 
 ## 常见问题
 
