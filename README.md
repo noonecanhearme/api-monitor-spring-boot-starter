@@ -11,13 +11,15 @@
 1. **API调用日志记录**
    - 通过AOP切面自动记录Controller层接口调用
    - 支持记录请求方法、URL、IP、请求体、响应体、执行时间等信息
-   - 支持日志文件和数据库两种存储方式
+   - 支持日志文件和数据库两种存储方式，用户可灵活配置
    - 自动创建数据库表，支持MySQL、PostgreSQL、SQL Server等主流数据库
 
 2. **火焰图性能分析**
    - 通过注解快速为特定接口生成火焰图
+   - 支持多种性能维度分析：CPU使用、内存分配、锁竞争、缓存未命中
    - 可视化展示方法调用栈和耗时情况
-   - 帮助定位性能瓶颈
+   - 支持多种输出格式：HTML、SVG、JSON
+   - 灵活的采样参数配置，帮助精确定位性能瓶颈
 
 ## 快速开始
 
@@ -29,7 +31,7 @@
 <dependency>
     <groupId>io.github.noonecanhearme</groupId>
     <artifactId>api-monitor-spring-boot-starter</artifactId>
-    <version>1.0.2</version>
+    <version>1.0.3</version>
 </dependency>
 ```
 
@@ -92,6 +94,8 @@ api:
       sampling-rate: 50
       # 火焰图输出格式，支持 html、svg、json
       format: html
+      # 分析事件类型：CPU（默认）、ALLOC、LOCK、CACHE_MISSES
+      event-type: CPU
 ```
 
 ### 4. 使用示例
@@ -190,13 +194,13 @@ public class TestController {
    - LOCK：分析锁竞争和线程阻塞
    - CACHE_MISSES：分析缓存未命中情况
    
-   可以通过配置项`api.monitor.flame-graph.event-type`或注解参数`eventType`指定分析类型。
+   可以通过全局配置项`api.monitor.flame-graph.event-type`设置默认分析类型，或通过`@EnableFlameGraph`注解的`eventType`参数为特定接口单独配置。
    
 3. **数据库表创建失败怎么办？**
    
    请确保数据库连接配置正确，并且用户有创建表的权限。如果仍然失败，可以手动创建表。
 
-3. **如何自定义日志记录的内容？**
+4. **如何自定义日志记录的内容？**
    
    可以通过配置`log-request-body`和`log-response-body`来控制是否记录请求体和响应体，也可以使用`ignore-paths`来忽略特定路径的日志记录。
 
