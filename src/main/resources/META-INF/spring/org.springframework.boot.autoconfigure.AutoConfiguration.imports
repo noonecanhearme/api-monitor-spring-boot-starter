@@ -1,1 +1,2 @@
-yandac.apimonitor.ApiMonitorAutoConfiguration
+io.github.noonecanhearme.apimonitor.ApiMonitorAutoConfiguration
+io.github.noonecanhearme.apimonitor.config.FilterConfig

@@ -1,0 +1,147 @@
+{
+  "groups": [
+    {
+      "name": "api.monitor",
+      "type": "io.github.noonecanhearme.apimonitor.ApiMonitorProperties",
+      "sourceType": "io.github.noonecanhearme.apimonitor.ApiMonitorProperties"
+    },
+    {
+      "name": "api.monitor.database",
+      "type": "io.github.noonecanhearme.apimonitor.ApiMonitorProperties.DatabaseConfig",
+      "sourceType": "io.github.noonecanhearme.apimonitor.ApiMonitorProperties"
+    },
+    {
+      "name": "api.monitor.flame-graph",
+      "type": "io.github.noonecanhearme.apimonitor.ApiMonitorProperties.FlameGraphConfig",
+      "sourceType": "io.github.noonecanhearme.apimonitor.ApiMonitorProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "api.monitor.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用API监控",
+      "defaultValue": true
+    },
+    {
+      "name": "api.monitor.log-type",
+      "type": "java.lang.String",
+      "description": "日志记录方式：log（默认）或 database",
+      "defaultValue": "log",
+      "deprecation": {
+        "reason": "已更名为log-type，原名称logType仍可使用"
+      }
+    },
+    {
+      "name": "api.monitor.log-request-body",
+      "type": "java.lang.Boolean",
+      "description": "是否记录请求体",
+      "defaultValue": true
+    },
+    {
+      "name": "api.monitor.log-response-body",
+      "type": "java.lang.Boolean",
+      "description": "是否记录响应体",
+      "defaultValue": true
+    },
+    {
+      "name": "api.monitor.ignore-paths",
+      "type": "java.lang.String[]",
+      "description": "忽略的URL路径",
+      "defaultValue": []
+    },
+    {
+      "name": "api.monitor.log-headers",
+      "type": "java.lang.Boolean",
+      "description": "是否记录请求和响应头",
+      "defaultValue": false
+    },
+    {
+      "name": "api.monitor.sensitive-headers",
+      "type": "java.util.Set<java.lang.String>",
+      "description": "敏感头信息，需要在日志中过滤",
+      "defaultValue": ["authorization", "token", "secret", "password"]
+    },
+    {
+      "name": "api.monitor.async-logging",
+      "type": "java.lang.Boolean",
+      "description": "是否异步记录日志",
+      "defaultValue": true
+    },
+    {
+      "name": "api.monitor.request-body-max-length",
+      "type": "java.lang.Integer",
+      "description": "请求体最大长度（字节）",
+      "defaultValue": 10240
+    },
+    {
+      "name": "api.monitor.response-body-max-length",
+      "type": "java.lang.Integer",
+      "description": "响应体最大长度（字节）",
+      "defaultValue": 10240
+    },
+    {
+      "name": "api.monitor.database.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用数据库存储",
+      "defaultValue": false
+    },
+    {
+      "name": "api.monitor.database.table-prefix",
+      "type": "java.lang.String",
+      "description": "数据库表名前缀",
+      "defaultValue": "api_"
+    },
+    {
+      "name": "api.monitor.database.auto-create-table",
+      "type": "java.lang.Boolean",
+      "description": "是否自动创建表",
+      "defaultValue": true
+    },
+    {
+      "name": "api.monitor.flame-graph.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用火焰图生成",
+      "defaultValue": false
+    },
+    {
+      "name": "api.monitor.flame-graph.save-path",
+      "type": "java.lang.String",
+      "description": "火焰图保存路径",
+      "defaultValue": "./flamegraphs"
+    },
+    {
+      "name": "api.monitor.flame-graph.sampling-duration",
+      "type": "java.lang.Integer",
+      "description": "火焰图采样时长（毫秒）",
+      "defaultValue": 1000
+    },
+    {
+      "name": "api.monitor.flame-graph.sampling-rate",
+      "type": "java.lang.Integer",
+      "description": "火焰图采样率（毫秒）",
+      "defaultValue": 50
+    },
+    {
+      "name": "api.monitor.flame-graph.generate-svg",
+      "type": "java.lang.Boolean",
+      "description": "是否生成SVG格式火焰图",
+      "defaultValue": true
+    }
+  ],
+  "hints": [
+    {
+      "name": "api.monitor.log-type",
+      "values": [
+        {
+          "value": "log",
+          "description": "使用日志文件记录API调用信息"
+        },
+        {
+          "value": "database",
+          "description": "使用数据库记录API调用信息"
+        }
+      ]
+    }
+  ]
+}

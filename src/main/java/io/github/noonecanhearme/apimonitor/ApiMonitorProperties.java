@@ -239,9 +239,9 @@ public class ApiMonitorProperties {
         private int samplingRate = 50;
         
         /**
-         * 是否生成SVG格式火焰图
+         * 火焰图输出格式，支持 html、svg、json，默认为 html
          */
-        private boolean generateSvg = true;
+        private String format = "html";
 
         // getter和setter方法
         public boolean isEnabled() {
@@ -276,12 +276,12 @@ public class ApiMonitorProperties {
             this.samplingRate = samplingRate;
         }
         
-        public boolean isGenerateSvg() {
-            return generateSvg;
+        public String getFormat() {
+            return format;
         }
         
-        public void setGenerateSvg(boolean generateSvg) {
-            this.generateSvg = generateSvg;
+        public void setFormat(String format) {
+            this.format = format;
         }
     }
 }

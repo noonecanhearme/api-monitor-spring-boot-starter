@@ -1,0 +1,3 @@
+io.github.noonecanhearme.apimonitor.ApiMonitorAutoConfiguration=org.springframework.stereotype.Component
+io.github.noonecanhearme.apimonitor.config.FilterConfig=org.springframework.stereotype.Component
+io.github.noonecanhearme.apimonitor.ApiMonitorProperties=org.springframework.stereotype.Component

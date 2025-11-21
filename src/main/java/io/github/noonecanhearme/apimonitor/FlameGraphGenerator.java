@@ -143,7 +143,7 @@ public class FlameGraphGenerator {
             }
             fileName += "_" + timestamp;
             
-            // 生成折叠堆栈格式文件
+            // 生成折叠堆栈格式文件（原始数据）
             File flameGraphFile = new File(flameGraphDir, fileName + ".txt");
             
             try (FileWriter writer = new FileWriter(flameGraphFile)) {
@@ -152,20 +152,118 @@ public class FlameGraphGenerator {
                 }
             }
             
-            // 如果配置了生成SVG，则尝试生成SVG
-            String svgPath = null;
-            if (properties.getFlameGraph().isGenerateSvg()) {
-                svgPath = generateSvgFlameGraph(fileName, filteredStacks);
+            // 根据配置的格式生成对应的火焰图
+            String format = properties.getFlameGraph().getFormat().toLowerCase();
+            String outputPath = null;
+            
+            switch (format) {
+                case "html":
+                    outputPath = generateHtmlFlameGraph(fileName, filteredStacks);
+                    break;
+                case "svg":
+                    outputPath = generateSvgFlameGraph(fileName, filteredStacks);
+                    break;
+                case "json":
+                    outputPath = generateJsonFlameGraph(fileName, filteredStacks);
+                    break;
+                default:
+                    logger.warn("不支持的火焰图格式: {}, 默认生成HTML格式", format);
+                    outputPath = generateHtmlFlameGraph(fileName, filteredStacks);
+                    break;
             }
 
-            logger.info("火焰图已保存至: {}", flameGraphFile.getAbsolutePath());
-            if (svgPath != null) {
-                logger.info("SVG火焰图已保存至: {}", svgPath);
-                return svgPath;
+            logger.info("火焰图原始数据已保存至: {}", flameGraphFile.getAbsolutePath());
+            if (outputPath != null) {
+                logger.info("{} 格式火焰图已保存至: {}", format.toUpperCase(), outputPath);
+                return outputPath;
             }
+            
             return flameGraphFile.getAbsolutePath();
         } catch (IOException e) {
             logger.error("生成火焰图失败: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+    
+    /**
+     * 生成HTML格式火焰图
+     */
+    private String generateHtmlFlameGraph(String fileName, Map<String, Integer> stackTraces) {
+        try {
+            File htmlFile = new File(flameGraphDir, fileName + ".html");
+            
+            try (PrintWriter writer = new PrintWriter(htmlFile)) {
+                // HTML头部
+                writer.println("<!DOCTYPE html>");
+                writer.println("<html lang=\"zh-CN\">");
+                writer.println("<head>");
+                writer.println("    <meta charset=\"UTF-8\">");
+                writer.println("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
+                writer.println("    <title>API监控 - 火焰图</title>");
+                writer.println("    <style>");
+                writer.println("        body { font-family: 'Consolas', 'Monaco', monospace; margin: 0; padding: 20px; background-color: #f5f5f5; }");
+                writer.println("        .container { max-width: 1200px; margin: 0 auto; background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }");
+                writer.println("        h1 { color: #333; font-size: 24px; margin-bottom: 20px; }");
+                writer.println("        .stats { margin-bottom: 20px; padding: 10px; background-color: #f0f0f0; border-radius: 4px; }");
+                writer.println("        .stats p { margin: 5px 0; color: #666; }");
+                writer.println("        .stack-traces { max-height: 600px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px; }");
+                writer.println("        .stack-item { margin-bottom: 10px; padding: 10px; background-color: #f9f9f9; border-left: 4px solid #4CAF50; }");
+                writer.println("        .stack-count { font-weight: bold; color: #4CAF50; margin-right: 10px; }");
+                writer.println("        .stack-content { word-break: break-all; }");
+                writer.println("        .stack-frame { display: block; margin-left: 20px; padding-left: 10px; border-left: 2px dotted #ccc; }");
+                writer.println("        .footer { margin-top: 20px; text-align: center; color: #999; font-size: 12px; }");
+                writer.println("    </style>");
+                writer.println("</head>");
+                writer.println("<body>");
+                writer.println("    <div class=\"container\">");
+                writer.println("        <h1>API调用火焰图分析</h1>");
+                
+                // 统计信息
+                int totalSamples = stackTraces.values().stream().mapToInt(Integer::intValue).sum();
+                writer.println("        <div class=\"stats\">");
+                writer.println("            <p><strong>总采样次数:</strong> " + totalSamples + "</p>");
+                writer.println("            <p><strong>堆栈帧数:</strong> " + stackTraces.size() + "</p>");
+                writer.println("            <p><strong>生成时间:</strong> " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "</p>");
+                writer.println("        </div>");
+                
+                // 堆栈信息
+                writer.println("        <h2>堆栈详情</h2>");
+                writer.println("        <div class=\"stack-traces\">");
+                
+                // 按采样次数排序并显示
+                stackTraces.entrySet().stream()
+                    .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                    .forEach(entry -> {
+                        writer.println("            <div class=\"stack-item\">");
+                        writer.println("                <span class=\"stack-count\">" + entry.getValue() + "次</span>");
+                        writer.println("                <div class=\"stack-content\">");
+                        
+                        // 将堆栈拆分为帧并显示
+                        String[] frames = entry.getKey().split(";\\\\\\\\");
+                        // 过滤掉空帧
+                        for (String frame : frames) {
+                            if (!frame.isEmpty()) {
+                                writer.println("                <span class=\"stack-frame\">" + frame + "</span>");
+                            }
+                        }
+                        
+                        writer.println("                </div>");
+                        writer.println("            </div>");
+                    });
+                
+                writer.println("        </div>");
+                
+                writer.println("        <div class=\"footer\">");
+                writer.println("            <p>此报告由 API Monitor Spring Boot Starter 自动生成</p>");
+                writer.println("        </div>");
+                writer.println("    </div>");
+                writer.println("</body>");
+                writer.println("</html>");
+            }
+            
+            return htmlFile.getAbsolutePath();
+        } catch (IOException e) {
+            logger.error("生成HTML火焰图失败: {}", e.getMessage(), e);
             return null;
         }
     }
@@ -175,7 +273,6 @@ public class FlameGraphGenerator {
      */
     private String generateSvgFlameGraph(String fileName, Map<String, Integer> stackTraces) {
         try {
-            // 简单的SVG生成逻辑
             File svgFile = new File(flameGraphDir, fileName + ".svg");
             
             try (PrintWriter writer = new PrintWriter(svgFile)) {
@@ -186,23 +283,120 @@ public class FlameGraphGenerator {
                 writer.println("<style>");
                 writer.println(".stackframe { cursor: pointer; opacity: 0.9; }");
                 writer.println(".stackframe:hover { opacity: 1; }");
+                writer.println("text { font-family: monospace; font-size: 12px; }");
                 writer.println("</style>");
                 
-                // 简单统计信息
+                // 统计信息
                 int totalSamples = stackTraces.values().stream().mapToInt(Integer::intValue).sum();
                 writer.println("<text x=\"10\" y=\"20\" font-family=\"monospace\" font-size=\"12\">Total Samples: " + totalSamples + "</text>");
                 writer.println("<text x=\"10\" y=\"40\" font-family=\"monospace\" font-size=\"12\">Stack Frames: " + stackTraces.size() + "</text>");
                 
-                // 提示信息
-                writer.println("<text x=\"10\" y=\"60\" font-family=\"monospace\" font-size=\"12\" fill=\"#333\">Note: This is a simple SVG representation.</text>");
-                writer.println("<text x=\"10\" y=\"80\" font-family=\"monospace\" font-size=\"12\" fill=\"#333\">Use folded stack file with flamegraph.pl for interactive visualization.</text>");
+                // 火焰图标题
+                writer.println("<text x=\"400\" y=\"80\" font-family=\"monospace\" font-size=\"16\" text-anchor=\"middle\">API Monitor Flame Graph</text>");
                 
+                // 简单的火焰图表示
+                int startY = 100;
+                int barHeight = 20;
+                int maxWidth = 780;
+                
+                // 按采样次数排序并显示前10个
+                List<Map.Entry<String, Integer>> sortedEntries = stackTraces.entrySet().stream()
+                    .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                    .limit(10)
+                    .collect(Collectors.toList());
+                
+                int index = 0;
+                for (Map.Entry<String, Integer> entry : sortedEntries) {
+                    int width = (int)((double)entry.getValue() / totalSamples * maxWidth);
+                    int y = startY + index * (barHeight + 5);
+                    
+                    // 生成随机颜色
+                    String color = String.format("#%02x%02x%02x", 
+                        64 + (index * 30) % 128, 
+                        128 + (index * 40) % 128, 
+                        200 + (index * 20) % 55);
+                    
+                    // 绘制条形
+                    writer.println("<rect x=\"10\" y=\"" + y + "\" width=\"" + width + "\" height=\"" + barHeight + "\" fill=\"" + color + "\" opacity=\"0.8\" class=\"stackframe\"/>");
+                    
+                    // 添加标签（显示方法名）
+                    String frameLabel = entry.getKey().split(";\\\\\\\\")[0];
+                    // 修复方法名显示 // 只显示第一个帧
+                    if (frameLabel.length() > 50) {
+                        frameLabel = frameLabel.substring(0, 47) + "...";
+                    }
+                    writer.println("<text x=\"15\" y=\"" + (y + 14) + "\" font-size=\"12\" fill=\"black\">" + frameLabel + " (" + entry.getValue() + ")</text>");
+                    
+                    index++;
+                }
+                
+                writer.println("<text x=\"10\" y=\"" + (startY + index * (barHeight + 5) + 20) + "\" font-size=\"12\" fill=\"#666\">注：显示采样次数最多的前10个堆栈</text>");
                 writer.println("</svg>");
             }
             
             return svgFile.getAbsolutePath();
         } catch (IOException e) {
             logger.error("生成SVG火焰图失败: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+    
+    /**
+     * 生成JSON格式火焰图数据
+     */
+    private String generateJsonFlameGraph(String fileName, Map<String, Integer> stackTraces) {
+        try {
+            File jsonFile = new File(flameGraphDir, fileName + ".json");
+            
+            try (PrintWriter writer = new PrintWriter(jsonFile)) {
+                writer.println("{");
+                writer.println("  \"metadata\": {");
+                writer.println("    \"generatedAt\": \"" + new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX").format(new Date()) + "\",");
+                writer.println("    \"totalSamples\": " + stackTraces.values().stream().mapToInt(Integer::intValue).sum() + ",");
+                writer.println("    \"stackCount\": " + stackTraces.size());
+                writer.println("  },");
+                writer.println("  \"stacks\": [");
+                
+                // 按采样次数排序并转换为JSON
+                List<Map.Entry<String, Integer>> sortedEntries = stackTraces.entrySet().stream()
+                    .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                    .collect(Collectors.toList());
+                
+                for (int i = 0; i < sortedEntries.size(); i++) {
+                    Map.Entry<String, Integer> entry = sortedEntries.get(i);
+                    String[] frames = entry.getKey().split(";\\\\\\\\");
+                    // 确保正确分割堆栈帧
+                    
+                    writer.println("    {");
+                    writer.println("      \"count\": " + entry.getValue() + ",");
+                    writer.println("      \"frames\": [");
+                    
+                    for (int j = 0; j < frames.length; j++) {
+                        if (!frames[j].isEmpty()) {
+                            writer.print("        \"" + frames[j].replace("\\", "\\\\").replace("\"", "\\\""));
+                            if (j < frames.length - 1 && !frames[j + 1].isEmpty()) {
+                                writer.println("\",");
+                            } else {
+                                writer.println("\"");
+                            }
+                        }
+                    }
+                    
+                    writer.println("      ]");
+                    if (i < sortedEntries.size() - 1) {
+                        writer.println("    },");
+                    } else {
+                        writer.println("    }");
+                    }
+                }
+                
+                writer.println("  ]");
+                writer.println("}");
+            }
+            
+            return jsonFile.getAbsolutePath();
+        } catch (IOException e) {
+            logger.error("生成JSON火焰图数据失败: {}", e.getMessage(), e);
             return null;
         }
     }
