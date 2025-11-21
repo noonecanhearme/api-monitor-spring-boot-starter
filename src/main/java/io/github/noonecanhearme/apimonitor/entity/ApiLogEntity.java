@@ -3,7 +3,7 @@ package io.github.noonecanhearme.apimonitor.entity;
 import java.time.LocalDateTime;
 
 /**
- * API日志实体类
+ * API log entity class
  */
 public class ApiLogEntity {
     private String id;
@@ -27,7 +27,7 @@ public class ApiLogEntity {
     private String className;
     private String methodName;
 
-    // getter和setter方法
+    // getter and setter methods
     public String getId() {
         return id;
     }

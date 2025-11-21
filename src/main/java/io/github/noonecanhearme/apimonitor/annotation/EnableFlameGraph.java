@@ -6,26 +6,26 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * 启用火焰图生成的注解
- * 用于标记需要生成火焰图的Controller方法
+ * Annotation to enable flame graph generation
+ * Used to mark Controller methods that need flame graph generation
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface EnableFlameGraph {
 
     /**
-     * 火焰图采样时长（毫秒）
-     * 默认使用配置文件中的值
+     * Flame graph sampling duration (milliseconds)
+     * Use value from configuration file by default
      */
     int samplingDuration() default -1;
 
     /**
-     * 火焰图文件名前缀
+     * Flame graph file name prefix
      */
     String fileNamePrefix() default "";
 
     /**
-     * 是否包含详细的类和方法信息
+     * Whether to include detailed class and method information
      */
     boolean includeDetails() default true;
 }

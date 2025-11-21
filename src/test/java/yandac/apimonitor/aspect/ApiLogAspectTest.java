@@ -34,7 +34,7 @@ class ApiLogAspectTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         
-        // 设置模拟的HTTP请求和响应
+        // Set up mocked HTTP request and response
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setMethod("GET");
         request.setRequestURI("/api/test");
@@ -49,15 +49,15 @@ class ApiLogAspectTest {
 
     @Test
     void testAspectInitialization() throws Throwable {
-        // 由于ApiLogAspect的核心逻辑在around通知中，我们简化测试
-        // 确保切面能够正常初始化
+        // Since the core logic of ApiLogAspect is in the around advice, we simplify the test
+        // Ensure the aspect can initialize normally
         assertTrue(apiLogAspect != null, "ApiLogAspect should initialize successfully");
     }
     
     @Test
     void testAroundApiCall() throws Throwable {
-        // 由于around方法可能依赖复杂的上下文，我们简化测试
-        // 只确保测试能够运行，不抛出异常
+        // Since the around method may depend on complex context, we simplify the test
+        // Just ensure the test can run without throwing exceptions
         assertTrue(true, "Test should execute without errors");
     }
 }

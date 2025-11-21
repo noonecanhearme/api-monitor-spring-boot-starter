@@ -20,113 +20,122 @@
     {
       "name": "api.monitor.enabled",
       "type": "java.lang.Boolean",
-      "description": "是否启用API监控",
+      "description": "Whether to enable API monitoring",
       "defaultValue": true
     },
     {
       "name": "api.monitor.log-type",
       "type": "java.lang.String",
-      "description": "日志记录方式：log（默认）或 database",
-      "defaultValue": "log",
-      "deprecation": {
-        "reason": "已更名为log-type，原名称logType仍可使用"
-      }
+      "description": "Log recording method: log (default) or database",
+      "defaultValue": "log"
+    },
+    {
+      "name": "api.monitor.log-file-path",
+      "type": "java.lang.String",
+      "description": "Log file save path (valid when log-type is log)",
+      "defaultValue": "./logs/api-monitor.log"
     },
     {
       "name": "api.monitor.log-request-body",
       "type": "java.lang.Boolean",
-      "description": "是否记录请求体",
+      "description": "Whether to log request body",
       "defaultValue": true
     },
     {
       "name": "api.monitor.log-response-body",
       "type": "java.lang.Boolean",
-      "description": "是否记录响应体",
+      "description": "Whether to log response body",
       "defaultValue": true
     },
     {
       "name": "api.monitor.ignore-paths",
       "type": "java.lang.String[]",
-      "description": "忽略的URL路径",
+      "description": "Ignored URL paths",
       "defaultValue": []
     },
     {
       "name": "api.monitor.log-headers",
       "type": "java.lang.Boolean",
-      "description": "是否记录请求和响应头",
+      "description": "Whether to log request and response headers",
       "defaultValue": false
     },
     {
       "name": "api.monitor.sensitive-headers",
       "type": "java.util.Set<java.lang.String>",
-      "description": "敏感头信息，需要在日志中过滤",
+      "description": "Sensitive header information that needs to be filtered in logs",
       "defaultValue": ["authorization", "token", "secret", "password"]
     },
     {
       "name": "api.monitor.async-logging",
       "type": "java.lang.Boolean",
-      "description": "是否异步记录日志",
+      "description": "Whether to log asynchronously",
       "defaultValue": true
     },
     {
       "name": "api.monitor.request-body-max-length",
       "type": "java.lang.Integer",
-      "description": "请求体最大长度（字节）",
+      "description": "Maximum request body length (bytes)",
       "defaultValue": 10240
     },
     {
       "name": "api.monitor.response-body-max-length",
       "type": "java.lang.Integer",
-      "description": "响应体最大长度（字节）",
+      "description": "Maximum response body length (bytes)",
       "defaultValue": 10240
     },
     {
       "name": "api.monitor.database.enabled",
       "type": "java.lang.Boolean",
-      "description": "是否启用数据库存储",
+      "description": "Whether to enable database storage",
       "defaultValue": false
     },
     {
       "name": "api.monitor.database.table-prefix",
       "type": "java.lang.String",
-      "description": "数据库表名前缀",
+      "description": "Database table name prefix",
       "defaultValue": "api_"
     },
     {
       "name": "api.monitor.database.auto-create-table",
       "type": "java.lang.Boolean",
-      "description": "是否自动创建表",
+      "description": "Whether to automatically create tables",
       "defaultValue": true
     },
     {
       "name": "api.monitor.flame-graph.enabled",
       "type": "java.lang.Boolean",
-      "description": "是否启用火焰图生成",
+      "description": "Whether to enable flame graph generation",
       "defaultValue": false
     },
     {
       "name": "api.monitor.flame-graph.save-path",
       "type": "java.lang.String",
-      "description": "火焰图保存路径",
+      "description": "Flame graph save path",
       "defaultValue": "./flamegraphs"
     },
     {
       "name": "api.monitor.flame-graph.sampling-duration",
       "type": "java.lang.Integer",
-      "description": "火焰图采样时长（毫秒）",
+      "description": "Flame graph sampling duration (milliseconds)",
       "defaultValue": 1000
     },
     {
       "name": "api.monitor.flame-graph.sampling-rate",
       "type": "java.lang.Integer",
-      "description": "火焰图采样率（毫秒）",
+      "description": "Flame graph sampling rate (milliseconds)",
       "defaultValue": 50
     },
     {
-      "name": "api.monitor.flame-graph.generate-svg",
-      "type": "java.lang.Boolean",
-      "description": "是否生成SVG格式火焰图",
-      "defaultValue": true
+      "name": "api.monitor.flame-graph.format",
+      "type": "java.lang.String",
+      "description": "Flame graph output format, supports html, svg, json",
+      "defaultValue": "html"
+    },
+    {
+      "name": "api.monitor.flame-graph.event-type",
+      "type": "io.github.noonecanhearme.apimonitor.ApiMonitorProperties$FlameGraphEventType",
+      "description": "Flame graph analysis event type",
+      "defaultValue": "CPU"
     }
   ],
   "hints": [
@@ -135,11 +144,49 @@
       "values": [
         {
           "value": "log",
-          "description": "使用日志文件记录API调用信息"
+          "description": "Use log files to record API call information"
         },
         {
           "value": "database",
-          "description": "使用数据库记录API调用信息"
+          "description": "Use database to record API call information"
+        }
+      ]
+    },
+    {
+      "name": "api.monitor.flame-graph.format",
+      "values": [
+        {
+          "value": "html",
+          "description": "Generate HTML format flame graph"
+        },
+        {
+          "value": "svg",
+          "description": "Generate SVG format flame graph"
+        },
+        {
+          "value": "json",
+          "description": "Generate JSON format flame graph data"
+        }
+      ]
+    },
+    {
+      "name": "api.monitor.flame-graph.event-type",
+      "values": [
+        {
+          "value": "CPU",
+          "description": "Analyze CPU usage and call duration"
+        },
+        {
+          "value": "ALLOC",
+          "description": "Analyze memory allocation"
+        },
+        {
+          "value": "LOCK",
+          "description": "Analyze lock contention and thread blocking"
+        },
+        {
+          "value": "CACHE_MISSES",
+          "description": "Analyze cache misses"
         }
       ]
     }

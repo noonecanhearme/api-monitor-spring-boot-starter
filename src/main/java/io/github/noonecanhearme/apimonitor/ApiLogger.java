@@ -20,8 +20,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
- * API日志记录器类
- * 负责将API调用日志记录到文件或数据库，支持异步日志写入和多数据库类型
+ * API Logger Class
+ * Responsible for recording API call logs to files or databases, supporting asynchronous log writing and multiple database types
  */
 public class ApiLogger implements DisposableBean {
 
@@ -35,18 +35,18 @@ public class ApiLogger implements DisposableBean {
     private final ExecutorService logExecutor;
     
     /**
-     * 构造函数
-     * @param properties API监控配置属性
+     * Constructor
+     * @param properties API monitoring configuration properties
      */
 
     public ApiLogger(ApiMonitorProperties properties) {
         this.properties = properties;
-        // 使用更合理的线程池配置
+        // Use more reasonable thread pool configuration
         this.logExecutor = Executors.newFixedThreadPool(
             Math.max(2, Runtime.getRuntime().availableProcessors() / 2),
             r -> {
                 Thread thread = new Thread(r, "api-logger-worker");
-                thread.setDaemon(true); // 设置为守护线程，避免阻止应用关闭
+                thread.setDaemon(true); // Set as daemon thread to avoid preventing application shutdown
                 return thread;
             }
         );
@@ -54,7 +54,7 @@ public class ApiLogger implements DisposableBean {
     }
     
     /**
-     * 销毁方法，用于关闭线程池资源
+     * Destroy method for shutting down thread pool resources
      */
     @Override
     public void destroy() {
@@ -62,7 +62,7 @@ public class ApiLogger implements DisposableBean {
     }
     
     /**
-     * 安全关闭线程池
+     * Safely shutdown the thread pool
      */
     private void shutdownExecutor() {
         try {
@@ -73,28 +73,28 @@ public class ApiLogger implements DisposableBean {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             logExecutor.shutdownNow();
-            logger.error("线程池关闭时发生中断", e);
+            logger.error("Thread pool shutdown interrupted", e);
         }
     }
 
     /**
-     * 设置JdbcTemplate（延迟注入，避免循环依赖）
+     * Set JdbcTemplate (delayed injection to avoid circular dependencies)
      */
     public void setJdbcTemplate(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
-        // 初始化数据库表
+        // Initialize database table
         if (properties.getDatabase().isEnabled() && properties.getDatabase().isAutoCreateTable()) {
             createDatabaseTable();
         }
     }
 
     /**
-     * 记录API调用日志
-     * @param apiLog API调用日志实体
+     * Record API call log
+     * @param apiLog API call log entity
      */
     public void log(ApiLogEntity apiLog) {
         if (apiLog == null) {
-            logger.warn("尝试记录空的API日志");
+            logger.warn("Attempting to record empty API log");
             return;
         }
         
@@ -107,101 +107,101 @@ public class ApiLogger implements DisposableBean {
                 saveToLogFile(apiLog);
             }
         } catch (Exception e) {
-            logger.error("记录API日志时发生异常", e);
+            logger.error("Exception occurred while recording API log", e);
         }
     }
 
     /**
-     * 将API日志保存到指定路径的日志文件
-     * @param apiLog API调用日志实体
+     * Save API log to specified log file path
+     * @param apiLog API call log entity
      */
     private void saveToLogFile(ApiLogEntity apiLog) {
         String logMessage = buildLogMessage(apiLog);
         
-        // 检查是否配置了日志文件路径
+        // Check if log file path is configured
         if (StringUtils.hasText(properties.getLogFilePath())) {
             handleFileLogging(properties.getLogFilePath(), logMessage, apiLog.getStatusCode());
         } else {
-            // 未配置日志文件路径，使用默认日志输出
+            // No log file path configured, using default log output
             logToLogger(logMessage, apiLog.getStatusCode());
         }
     }
     
     /**
-     * 构建日志消息
-     * @param apiLog API调用日志实体
-     * @return 格式化的日志消息
+     * Build log message
+     * @param apiLog API call log entity
+     * @return Formatted log message
      */
     private String buildLogMessage(ApiLogEntity apiLog) {
         StringBuilder logMessageBuilder = new StringBuilder();
-        logMessageBuilder.append("API调用记录 [")
+        logMessageBuilder.append("API call record [")
                 .append(apiLog.getRequestId()).append("] - ")
                 .append(apiLog.getMethod()).append(" ")
                 .append(apiLog.getUrl()).append(" - ")
                 .append(apiLog.getStatusCode()).append(" - ")
                 .append(apiLog.getExecuteTime()).append("ms\n");
 
-        // 记录客户端信息
-        logMessageBuilder.append("客户端: IP=").append(apiLog.getIp())
+        // Record client information
+        logMessageBuilder.append("Client: IP=").append(apiLog.getIp())
                 .append(", UA=").append(apiLog.getUserAgent()).append("\n");
 
-        // 记录请求体
+        // Record request body
         if (properties.isLogRequestBody() && StringUtils.hasText(apiLog.getRequestBody())) {
-            logMessageBuilder.append("请求体: ").append(apiLog.getRequestBody()).append("\n");
+            logMessageBuilder.append("Request body: ").append(apiLog.getRequestBody()).append("\n");
         }
 
-        // 记录响应体
+        // Record response body
         if (properties.isLogResponseBody() && StringUtils.hasText(apiLog.getResponseBody())) {
-            logMessageBuilder.append("响应体: ").append(apiLog.getResponseBody()).append("\n");
+            logMessageBuilder.append("Response body: ").append(apiLog.getResponseBody()).append("\n");
         }
 
-        // 记录异常信息
+        // Record exception information
         if (StringUtils.hasText(apiLog.getException())) {
-            logMessageBuilder.append("异常信息: ").append(apiLog.getException()).append("\n");
+            logMessageBuilder.append("Exception: ").append(apiLog.getException()).append("\n");
         }
         
         return logMessageBuilder.toString();
     }
     
     /**
-     * 处理文件日志记录
-     * @param logFilePath 日志文件路径
-     * @param logMessage 日志消息
-     * @param statusCode HTTP状态码
+     * Handle file logging
+     * @param logFilePath Log file path
+     * @param logMessage Log message
+     * @param statusCode HTTP status code
      */
     private void handleFileLogging(String logFilePath, String logMessage, int statusCode) {
         File logDir = new File(logFilePath);
         
-        // 确保日志目录存在
+        // Ensure log directory exists
         if (!ensureDirectoryExists(logDir)) {
-            logger.error("无法创建日志目录: {}", logFilePath);
-            // 回退到默认日志输出
+            logger.error("Failed to create log directory: {}", logFilePath);
+            // Fallback to default log output
             logToLogger(logMessage, statusCode);
             return;
         }
         
-        // 生成带日期的日志文件名
+        // Generate log file name with date
         String logFileName = "api-monitor-" + LocalDate.now().format(DATE_FORMATTER) + ".log";
         File logFile = new File(logDir, logFileName);
         
         String formattedLog = "[" + LocalDateTime.now().format(DATETIME_FORMATTER) + "] " + logMessage;
         
-        // 异步写入文件
+        // Asynchronous file writing
         logExecutor.execute(() -> {
             try {
                 writeToFile(logFile, formattedLog);
             } catch (Exception e) {
-                logger.error("异步写入日志文件失败", e);
-                // 记录到默认日志器作为备份
-                logger.info("备用日志记录: {}", formattedLog);
+                logger.error("Failed to write log file asynchronously", e);
+                // Log to default logger as backup
+                logger.info("Fallback log record: {}", formattedLog);
             }
         });
     }
     
     /**
-     * 确保目录存在，如果不存在则创建
-     * @param directory 目录文件对象
-     * @return 是否成功创建或目录已存在
+     * Ensure directory exists, create if not
+     * @param directory Directory file object
+     * @return Whether directory was successfully created or already exists
      */
     private boolean ensureDirectoryExists(File directory) {
         if (directory == null) {
@@ -211,10 +211,10 @@ public class ApiLogger implements DisposableBean {
     }
     
     /**
-     * 写入日志到文件
-     * @param logFile 日志文件
-     * @param logMessage 日志消息
-     * @throws IOException 当文件写入失败时抛出
+     * Write log to file
+     * @param logFile Log file
+     * @param logMessage Log message
+     * @throws IOException Thrown when file writing fails
      */
     private void writeToFile(File logFile, String logMessage) throws IOException {
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(logFile, true))) {
@@ -224,9 +224,9 @@ public class ApiLogger implements DisposableBean {
     }
     
     /**
-     * 根据状态码记录日志到默认日志器
-     * @param logMessage 日志消息
-     * @param statusCode HTTP状态码
+     * Log to default logger based on status code
+     * @param logMessage Log message
+     * @param statusCode HTTP status code
      */
     private void logToLogger(String logMessage, int statusCode) {
         if (statusCode >= 500) {
@@ -239,8 +239,8 @@ public class ApiLogger implements DisposableBean {
     }
 
     /**
-     * 保存日志到数据库
-     * @param apiLog API调用日志实体
+     * Save log to database
+     * @param apiLog API call log entity
      */
     private void saveToDatabase(ApiLogEntity apiLog) {
         try {
@@ -273,43 +273,43 @@ public class ApiLogger implements DisposableBean {
                     apiLog.getExceptionStack()
             );
         } catch (Exception e) {
-            logger.error("保存API日志到数据库失败: {}", e.getMessage(), e);
-            // 如果数据库保存失败，尝试保存到日志文件作为备份
+            logger.error("Failed to save API log to database: {}", e.getMessage(), e);
+            // If database saving fails, try to save to log file as backup
             try {
                 saveToLogFile(apiLog);
             } catch (Exception fallbackException) {
-                logger.error("备份到文件日志也失败: {}", fallbackException.getMessage(), fallbackException);
+                logger.error("Fallback to file logging also failed: {}", fallbackException.getMessage(), fallbackException);
             }
         }
     }
 
     /**
-     * 创建数据库表
+     * Create database table
      */
     private void createDatabaseTable() {
         try {
             if (jdbcTemplate == null) {
-                logger.warn("JdbcTemplate未初始化，无法创建数据库表");
+                logger.warn("JdbcTemplate not initialized, cannot create database table");
                 return;
             }
 
-            // 获取数据库类型
+            // Get database type
             String databaseType = getDatabaseType();
             DatabaseTableCreator tableCreator = databaseTableCreators.get(databaseType);
 
             if (tableCreator != null) {
                 tableCreator.createTable(jdbcTemplate, properties.getDatabase().getTablePrefix() + "log");
-                logger.info("API日志表创建成功");
+                logger.info("API log table created successfully");
             } else {
-                logger.warn("不支持的数据库类型: {}", databaseType);
+                logger.warn("Unsupported database type: {}", databaseType);
             }
         } catch (Exception e) {
-            logger.error("创建API日志表失败: {}", e.getMessage(), e);
+            logger.error("Failed to create API log table: {}", e.getMessage(), e);
         }
     }
 
     /**
-     * 获取数据库类型
+     * Get database type
      */
     private String getDatabaseType() {
         try {
@@ -325,16 +325,16 @@ public class ApiLogger implements DisposableBean {
             }
             return "unknown";
         } catch (Exception e) {
-            logger.error("获取数据库类型失败: {}", e.getMessage(), e);
+            logger.error("Failed to get database type: {}", e.getMessage(), e);
             return "unknown";
         }
     }
 
     /**
-     * 初始化数据库表创建器
+     * Initialize database table creators
      */
     private void initDatabaseTableCreators() {
-        // MySQL表创建器
+        // MySQL table creator
         databaseTableCreators.put("mysql", (jdbcTemplate, tableName) -> {
             String sql = "CREATE TABLE IF NOT EXISTS " + tableName + " (" +
                     "id VARCHAR(36) PRIMARY KEY, " +
@@ -364,7 +364,7 @@ public class ApiLogger implements DisposableBean {
             jdbcTemplate.execute(sql);
         });
 
-        // PostgreSQL表创建器
+        // PostgreSQL table creator
         databaseTableCreators.put("postgresql", (jdbcTemplate, tableName) -> {
             String sql = "CREATE TABLE IF NOT EXISTS " + tableName + " (" +
                     "id VARCHAR(36) PRIMARY KEY, " +
@@ -389,13 +389,13 @@ public class ApiLogger implements DisposableBean {
                     "method_name VARCHAR(255)" +
                     ")";
             jdbcTemplate.execute(sql);
-            // 创建索引
+            // Create index
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_" + tableName + "_request_id ON " + tableName + "(request_id)");
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_" + tableName + "_url ON " + tableName + "(url)");
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_" + tableName + "_start_time ON " + tableName + "(start_time)");
         });
 
-        // SQL Server表创建器
+        // SQL Server table creator
         databaseTableCreators.put("sqlserver", (jdbcTemplate, tableName) -> {
             String sql = "IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='" + tableName + "' AND xtype='U') " +
                     "CREATE TABLE " + tableName + " (" +
@@ -421,14 +421,59 @@ public class ApiLogger implements DisposableBean {
                     "method_name VARCHAR(255)" +
                     ")";
             jdbcTemplate.execute(sql);
-            // 创建索引
+            // Create index
             jdbcTemplate.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='idx_" + tableName + "_request_id') " +
                     "CREATE INDEX idx_" + tableName + "_request_id ON " + tableName + "(request_id)");
+            jdbcTemplate.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='idx_" + tableName + "_url') " +
+                    "CREATE INDEX idx_" + tableName + "_url ON " + tableName + "(url)");
+            jdbcTemplate.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='idx_" + tableName + "_start_time') " +
+                    "CREATE INDEX idx_" + tableName + "_start_time ON " + tableName + "(start_time)");
+        });
+        
+        // Oracle table creator
+        databaseTableCreators.put("oracle", (jdbcTemplate, tableName) -> {
+            // Check if table exists using Oracle's all_tables
+            boolean tableExists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM all_tables WHERE table_name = UPPER(?)",
+                new Object[]{tableName},
+                Integer.class
+            ) > 0;
+            
+            if (!tableExists) {
+                String sql = "CREATE TABLE " + tableName + " (" +
+                        "id VARCHAR2(36) PRIMARY KEY, " +
+                        "request_id VARCHAR2(36) NOT NULL, " +
+                        "method VARCHAR2(10) NOT NULL, " +
+                        "url VARCHAR2(500) NOT NULL, " +
+                        "ip VARCHAR2(50), " +
+                        "user_agent VARCHAR2(1000), " +
+                        "request_body CLOB, " +
+                        "response_body CLOB, " +
+                        "query_params CLOB, " +
+                        "headers CLOB, " +
+                        "response_headers CLOB, " +
+                        "status_code NUMBER(10) NOT NULL, " +
+                        "execute_time NUMBER(19) NOT NULL, " +
+                        "start_time TIMESTAMP NOT NULL, " +
+                        "end_time TIMESTAMP NOT NULL, " +
+                        "exception CLOB, " +
+                        "exception_message CLOB, " +
+                        "exception_stack CLOB, " +
+                        "class_name VARCHAR2(255), " +
+                        "method_name VARCHAR2(255)" +
+                        ")";
+                jdbcTemplate.execute(sql);
+                
+                // Create indexes
+                jdbcTemplate.execute("CREATE INDEX idx_" + tableName + "_request_id ON " + tableName + "(request_id)");
+                jdbcTemplate.execute("CREATE INDEX idx_" + tableName + "_url ON " + tableName + "(url)");
+                jdbcTemplate.execute("CREATE INDEX idx_" + tableName + "_start_time ON " + tableName + "(start_time)");
+            }
         });
     }
 
     /**
-     * 数据库表创建器接口
+     * Database table creator interface
      */
     @FunctionalInterface
     private interface DatabaseTableCreator {

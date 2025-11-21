@@ -1,1 +1,1 @@
-# 仅使用Spring Boot的自动配置机制，不指定具体的组件类型，避免影响依赖项目的组件扫描
+# Only use Spring Boot's auto-configuration mechanism, do not specify specific component types to avoid affecting component scanning of dependent projects

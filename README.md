@@ -11,13 +11,15 @@
 1. **API调用日志记录**
    - 通过AOP切面自动记录Controller层接口调用
    - 支持记录请求方法、URL、IP、请求体、响应体、执行时间等信息
-   - 支持日志文件和数据库两种存储方式
+   - 支持日志文件和数据库两种存储方式，用户可灵活配置
    - 自动创建数据库表，支持MySQL、PostgreSQL、SQL Server等主流数据库
 
 2. **火焰图性能分析**
    - 通过注解快速为特定接口生成火焰图
+   - 支持多种性能维度分析：CPU使用、内存分配、锁竞争、缓存未命中
    - 可视化展示方法调用栈和耗时情况
-   - 帮助定位性能瓶颈
+   - 支持多种输出格式：HTML、SVG、JSON
+   - 灵活的采样参数配置，帮助精确定位性能瓶颈
 
 ## 快速开始
 
@@ -29,7 +31,7 @@
 <dependency>
     <groupId>io.github.noonecanhearme</groupId>
     <artifactId>api-monitor-spring-boot-starter</artifactId>
-    <version>1.0.2</version>
+    <version>1.0.5</version>
 </dependency>
 ```
 
@@ -65,7 +67,7 @@ api:
     # 日志记录方式：log（默认）或 database
     log-type: log
     # 日志文件保存路径（当log-type为log时有效）
-    log-path: ./logs/api-monitor.log
+    log-file-path: ./logs/api-monitor.log
     # 是否记录请求体
     log-request-body: true
     # 是否记录响应体
@@ -92,6 +94,8 @@ api:
       sampling-rate: 50
       # 火焰图输出格式，支持 html、svg、json
       format: html
+      # 分析事件类型：CPU（默认）、ALLOC、LOCK、CACHE_MISSES
+      event-type: CPU
 ```
 
 ### 4. 使用示例
@@ -125,6 +129,20 @@ public class TestController {
         // 复杂业务逻辑
         return "completed";
     }
+    
+    @GetMapping("/memory-intensive")
+    @EnableFlameGraph(samplingDuration = 2000, eventType = "ALLOC")
+    public List<DataItem> memoryIntensiveOperation() {
+        // 内存密集型操作
+        return generateLargeDataset();
+    }
+    
+    @GetMapping("/concurrent")
+    @EnableFlameGraph(samplingDuration = 1500, eventType = "LOCK")
+    public String concurrentOperation() {
+        // 并发操作
+        return executeConcurrentTasks();
+    }
 }
 ```
 
@@ -136,7 +154,7 @@ public class TestController {
 
 - `api.monitor.enabled`：是否启用API监控，默认true
 - `api.monitor.log-type`：日志记录方式，可选值：log（日志文件）、database（数据库）
-- `api.monitor.log-path`：日志文件保存路径（当log-type为log时有效），默认./logs/api-monitor.log
+- `api.monitor.log-file-path`：日志文件保存路径（当log-type为log时有效），默认./logs/api-monitor.log
 - `api.monitor.log-request-body`：是否记录请求体，默认true
 - `api.monitor.log-response-body`：是否记录响应体，默认true
 - `api.monitor.ignore-paths`：需要忽略的URL路径数组
@@ -154,18 +172,35 @@ public class TestController {
 - `api.monitor.flame-graph.sampling-duration`：火焰图采样时长（毫秒），默认1000
 - `api.monitor.flame-graph.sampling-rate`：火焰图采样率（毫秒），默认50
 - `api.monitor.flame-graph.format`：火焰图输出格式，支持html、svg、json，默认html
+- `api.monitor.flame-graph.event-type`：分析事件类型，可选值：CPU（CPU使用）、ALLOC（内存分配）、LOCK（锁竞争）、CACHE_MISSES（缓存未命中），默认CPU
 
 ## 常见问题
 
 1. **如何查看生成的火焰图？**
    
-   组件生成的是折叠堆栈格式的文本文件，可以使用[FlameGraph](https://github.com/brendangregg/FlameGraph)工具转换为可视化的SVG格式。
+   对于HTML格式的火焰图，可以直接在浏览器中打开查看，支持以下交互功能：
+   - 点击帧可以查看详细信息并高亮显示
+   - 使用缩放按钮放大缩小火焰图
+   - 通过事件类型下拉框筛选特定类型的帧
+   - 鼠标悬停显示帧的基本信息
+   
+   对于其他格式，可以使用相应的工具查看。
 
-2. **数据库表创建失败怎么办？**
+2. **火焰图支持哪些事件类型分析？**
+   
+   组件支持四种主要事件类型的分析：
+   - CPU：分析CPU使用率和调用耗时
+   - ALLOC：分析内存分配情况
+   - LOCK：分析锁竞争和线程阻塞
+   - CACHE_MISSES：分析缓存未命中情况
+   
+   可以通过全局配置项`api.monitor.flame-graph.event-type`设置默认分析类型，或通过`@EnableFlameGraph`注解的`eventType`参数为特定接口单独配置。
+   
+3. **数据库表创建失败怎么办？**
    
    请确保数据库连接配置正确，并且用户有创建表的权限。如果仍然失败，可以手动创建表。
 
-3. **如何自定义日志记录的内容？**
+4. **如何自定义日志记录的内容？**
    
    可以通过配置`log-request-body`和`log-response-body`来控制是否记录请求体和响应体，也可以使用`ignore-paths`来忽略特定路径的日志记录。
 

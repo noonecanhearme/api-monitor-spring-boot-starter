@@ -5,13 +5,13 @@ import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
 
 /**
- * 请求体缓存过滤器，用于保存请求体以便重复读取
+ * Request body caching filter, used to save request body for repeated reading
  */
 public class RequestCachingFilter implements Filter {
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException {
-        // 包装HttpServletRequest，使其能够重复读取请求体
+        // Wrap HttpServletRequest to enable repeated reading of request body
         if (request instanceof HttpServletRequest) {
             CachedBodyHttpServletRequest cachedRequest = new CachedBodyHttpServletRequest((HttpServletRequest) request);
             chain.doFilter(cachedRequest, response);
@@ -22,11 +22,11 @@ public class RequestCachingFilter implements Filter {
 
     @Override
     public void init(FilterConfig filterConfig) throws ServletException {
-        // 初始化方法
+        // Initialization method
     }
 
     @Override
     public void destroy() {
-        // 销毁方法
+        // Destroy method
     }
 }
