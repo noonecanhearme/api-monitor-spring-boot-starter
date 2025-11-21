@@ -3,7 +3,6 @@ package io.github.noonecanhearme.apimonitor.filter;
 import javax.servlet.*;
 import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
-import io.github.noonecanhearme.apimonitor.filter.CachedBodyHttpServletRequest;
 
 /**
  * 请求体缓存过滤器，用于保存请求体以便重复读取

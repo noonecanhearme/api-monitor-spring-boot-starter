@@ -1,13 +1,18 @@
 package io.github.noonecanhearme.apimonitor;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.StringUtils;
 
+import javax.annotation.PostConstruct;
+import java.io.File;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * API监控配置属性类
+ * 管理API监控的所有配置选项，包括日志记录、数据库存储和火焰图生成等功能
  */
 @ConfigurationProperties(prefix = "api.monitor")
 public class ApiMonitorProperties {
@@ -18,14 +23,21 @@ public class ApiMonitorProperties {
     private boolean enabled = true;
 
     /**
-     * 日志记录方式：log（默认）或 database
+     * 日志记录方式枚举
      */
-    private String logType = "log";
+    public enum LogType {
+        LOG, DATABASE
+    }
     
     /**
-     * 日志文件保存路径，默认为系统临时目录
+     * 日志记录方式：log（默认）或 database
      */
-    private String logFilePath = System.getProperty("java.io.tmpdir") + "/api-monitor-logs";
+    private String logType = LogType.LOG.name().toLowerCase();
+    
+    /**
+     * 日志文件保存路径，默认为系统临时目录下的api-monitor-logs子目录
+     */
+    private String logFilePath = ensureTrailingSlash(System.getProperty("java.io.tmpdir")) + "api-monitor-logs";
 
     /**
      * 数据库配置
@@ -174,12 +186,75 @@ public class ApiMonitorProperties {
         this.responseBodyMaxLength = responseBodyMaxLength;
     }
     
+    /**
+     * 获取日志文件保存路径
+     * @return 日志文件保存路径
+     */
     public String getLogFilePath() {
         return logFilePath;
     }
     
+    /**
+     * 设置日志文件保存路径
+     * @param logFilePath 日志文件保存路径
+     */
     public void setLogFilePath(String logFilePath) {
-        this.logFilePath = logFilePath;
+        this.logFilePath = ensureTrailingSlash(logFilePath);
+    }
+    
+    /**
+     * 确保路径以文件分隔符结尾
+     * @param path 路径字符串
+     * @return 以文件分隔符结尾的路径
+     */
+    private String ensureTrailingSlash(String path) {
+        if (!StringUtils.hasLength(path)) {
+            return path;
+        }
+        
+        String normalizedPath = path.replace('/', File.separatorChar).replace('\\', File.separatorChar);
+        if (!normalizedPath.endsWith(File.separator)) {
+            normalizedPath += File.separator;
+        }
+        return normalizedPath;
+    }
+    
+    /**
+     * 验证配置有效性
+     */
+    @PostConstruct
+    public void validate() {
+        // 验证日志类型
+        if (!LogType.LOG.name().toLowerCase().equals(logType) && 
+            !LogType.DATABASE.name().toLowerCase().equals(logType)) {
+            throw new IllegalArgumentException("Invalid logType: " + logType + ", must be 'log' or 'database'");
+        }
+        
+        // 验证敏感头信息集合不为空
+        if (sensitiveHeaders == null) {
+            sensitiveHeaders = new HashSet<>(Arrays.asList("authorization", "token", "secret", "password"));
+        }
+        
+        // 转换敏感头为小写，确保不区分大小写匹配
+        sensitiveHeaders = sensitiveHeaders.stream()
+                .map(String::toLowerCase)
+                .collect(Collectors.toSet());
+        
+        // 验证采样配置的合理性
+        if (flameGraph != null) {
+            if (flameGraph.getSamplingRate() <= 0) {
+                flameGraph.setSamplingRate(50);
+            }
+            if (flameGraph.getSamplingDuration() <= 0) {
+                flameGraph.setSamplingDuration(1000);
+            }
+            if (flameGraph.getSamplingRate() >= flameGraph.getSamplingDuration()) {
+                flameGraph.setSamplingRate(flameGraph.getSamplingDuration() / 2);
+            }
+            
+            // 确保火焰图路径正确
+            flameGraph.setSavePath(ensureTrailingSlash(flameGraph.getSavePath()));
+        }
     }
 
     /**

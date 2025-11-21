@@ -2,7 +2,6 @@ package yandac.apimonitor.aspect;
 
 import io.github.noonecanhearme.apimonitor.ApiLogger;
 import io.github.noonecanhearme.apimonitor.FlameGraphGenerator;
-import io.github.noonecanhearme.apimonitor.ApiMonitorProperties;
 import io.github.noonecanhearme.apimonitor.aspect.ApiLogAspect;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,8 +14,6 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ApiLogAspectTest {

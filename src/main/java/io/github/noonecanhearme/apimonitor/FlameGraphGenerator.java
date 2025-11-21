@@ -2,7 +2,7 @@ package io.github.noonecanhearme.apimonitor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.util.StringUtils;
+import org.springframework.beans.factory.DisposableBean;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -10,40 +10,65 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
-import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import java.text.SimpleDateFormat;
+import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * 火焰图生成器
+ * 负责生成API调用的性能分析火焰图，支持HTML、SVG和JSON格式
  */
-public class FlameGraphGenerator {
+public class FlameGraphGenerator implements DisposableBean {
 
     private static final Logger logger = LoggerFactory.getLogger(FlameGraphGenerator.class);
     
     // 常量定义
     private static final int MAX_STACK_DEPTH = 50;
     private static final int MIN_SAMPLE_COUNT = 10;
+    private static final DateTimeFormatter JSON_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
+    private static final DateTimeFormatter HTML_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     
     private final ApiMonitorProperties properties;
     private final ThreadMXBean threadMXBean;
     private final Map<String, ProfilerTask> activeProfilerTasks = new ConcurrentHashMap<>();
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(5);
+    private final ScheduledExecutorService scheduler;
     private final File flameGraphDir;
 
     public FlameGraphGenerator(ApiMonitorProperties properties) {
         this.properties = properties;
         this.threadMXBean = ManagementFactory.getThreadMXBean();
         
+        // 优化线程池配置
+        int corePoolSize = Math.max(2, Runtime.getRuntime().availableProcessors());
+        this.scheduler = new ScheduledThreadPoolExecutor(
+                corePoolSize,
+                runnable -> {
+                    Thread thread = new Thread(runnable, "flamegraph-profiler");
+                    thread.setDaemon(true); // 设置为守护线程
+                    thread.setPriority(Thread.NORM_PRIORITY);
+                    return thread;
+                },
+                new ThreadPoolExecutor.CallerRunsPolicy() // 拒绝策略
+        );
+        // 设置线程池属性
+        ((ThreadPoolExecutor) this.scheduler).setKeepAliveTime(60L, TimeUnit.SECONDS);
+        // Queue capacity is set when creating the thread pool, not via setQueueCapacity
+        
         // 确保火焰图保存目录存在
         this.flameGraphDir = new File(properties.getFlameGraph().getSavePath());
         if (!flameGraphDir.exists()) {
-            flameGraphDir.mkdirs();
+            boolean created = flameGraphDir.mkdirs();
+            if (!created) {
+                logger.error("无法创建火焰图保存目录: {}", flameGraphDir.getAbsolutePath());
+            }
         }
     }
 
@@ -223,7 +248,7 @@ public class FlameGraphGenerator {
                 writer.println("        <div class=\"stats\">");
                 writer.println("            <p><strong>总采样次数:</strong> " + totalSamples + "</p>");
                 writer.println("            <p><strong>堆栈帧数:</strong> " + stackTraces.size() + "</p>");
-                writer.println("            <p><strong>生成时间:</strong> " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "</p>");
+                writer.println("            <p><strong>生成时间:</strong> " + HTML_DATE_TIME_FORMATTER.format(LocalDateTime.now()) + "</p>");
                 writer.println("        </div>");
                 
                 // 堆栈信息
@@ -351,8 +376,10 @@ public class FlameGraphGenerator {
             try (PrintWriter writer = new PrintWriter(jsonFile)) {
                 writer.println("{");
                 writer.println("  \"metadata\": {");
-                writer.println("    \"generatedAt\": \"" + new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX").format(new Date()) + "\",");
-                writer.println("    \"totalSamples\": " + stackTraces.values().stream().mapToInt(Integer::intValue).sum() + ",");
+                String generatedAt = JSON_DATE_TIME_FORMATTER.format(LocalDateTime.now());
+                writer.println("    \"generatedAt\": \"" + generatedAt + "\",");
+                int totalSamples = stackTraces.values().stream().mapToInt(Integer::intValue).sum();
+                writer.println("    \"totalSamples\": " + totalSamples + ",");
                 writer.println("    \"stackCount\": " + stackTraces.size());
                 writer.println("  },");
                 writer.println("  \"stacks\": [");
@@ -364,7 +391,7 @@ public class FlameGraphGenerator {
                 
                 for (int i = 0; i < sortedEntries.size(); i++) {
                     Map.Entry<String, Integer> entry = sortedEntries.get(i);
-                    String[] frames = entry.getKey().split(";\\\\\\\\");
+                    String[] frames = entry.getKey().split(";\\\\");
                     // 确保正确分割堆栈帧
                     
                     writer.println("    {");
@@ -373,7 +400,8 @@ public class FlameGraphGenerator {
                     
                     for (int j = 0; j < frames.length; j++) {
                         if (!frames[j].isEmpty()) {
-                            writer.print("        \"" + frames[j].replace("\\", "\\\\").replace("\"", "\\\""));
+                            String frame = frames[j].replace("\\", "\\\\").replace("\"", "\\\"");
+                            writer.print("        \"" + frame);
                             if (j < frames.length - 1 && !frames[j + 1].isEmpty()) {
                                 writer.println("\",");
                             } else {
@@ -523,5 +551,13 @@ public class FlameGraphGenerator {
         } catch (Exception e) {
             logger.error("关闭性能分析器失败: {}", e.getMessage(), e);
         }
+    }
+
+    /**
+     * 实现DisposableBean接口的destroy方法，确保在Spring容器关闭时释放资源
+     */
+    @Override
+    public void destroy() throws Exception {
+        shutdown();
     }
 }

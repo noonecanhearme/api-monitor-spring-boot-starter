@@ -3,6 +3,7 @@ package io.github.noonecanhearme.apimonitor;
 import io.github.noonecanhearme.apimonitor.entity.ApiLogEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.util.StringUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -10,28 +11,70 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * API日志记录器类
+ * 负责将API调用日志记录到文件或数据库，支持异步日志写入和多数据库类型
  */
-public class ApiLogger {
+public class ApiLogger implements DisposableBean {
 
     private static final Logger logger = LoggerFactory.getLogger(ApiLogger.class);
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter DATETIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
+    
     private final ApiMonitorProperties properties;
-    private final Map<String, DatabaseTableCreator> databaseTableCreators = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, DatabaseTableCreator> databaseTableCreators = new ConcurrentHashMap<>();
     private JdbcTemplate jdbcTemplate;
-    private final ExecutorService logExecutor = Executors.newFixedThreadPool(2);
+    private final ExecutorService logExecutor;
+    
+    /**
+     * 构造函数
+     * @param properties API监控配置属性
+     */
 
     public ApiLogger(ApiMonitorProperties properties) {
         this.properties = properties;
+        // 使用更合理的线程池配置
+        this.logExecutor = Executors.newFixedThreadPool(
+            Math.max(2, Runtime.getRuntime().availableProcessors() / 2),
+            r -> {
+                Thread thread = new Thread(r, "api-logger-worker");
+                thread.setDaemon(true); // 设置为守护线程，避免阻止应用关闭
+                return thread;
+            }
+        );
         initDatabaseTableCreators();
+    }
+    
+    /**
+     * 销毁方法，用于关闭线程池资源
+     */
+    @Override
+    public void destroy() {
+        shutdownExecutor();
+    }
+    
+    /**
+     * 安全关闭线程池
+     */
+    private void shutdownExecutor() {
+        try {
+            logExecutor.shutdown();
+            if (!logExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                logExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logExecutor.shutdownNow();
+            logger.error("线程池关闭时发生中断", e);
+        }
     }
 
     /**
@@ -47,19 +90,49 @@ public class ApiLogger {
 
     /**
      * 记录API调用日志
+     * @param apiLog API调用日志实体
      */
     public void log(ApiLogEntity apiLog) {
-        if (properties.getLogType().equalsIgnoreCase("database") && properties.getDatabase().isEnabled() && jdbcTemplate != null) {
-            saveToDatabase(apiLog);
-        } else {
-            saveToLogFile(apiLog);
+        if (apiLog == null) {
+            logger.warn("尝试记录空的API日志");
+            return;
+        }
+        
+        try {
+            if ("database".equalsIgnoreCase(properties.getLogType()) && 
+                properties.getDatabase().isEnabled() && 
+                jdbcTemplate != null) {
+                saveToDatabase(apiLog);
+            } else {
+                saveToLogFile(apiLog);
+            }
+        } catch (Exception e) {
+            logger.error("记录API日志时发生异常", e);
         }
     }
 
     /**
      * 将API日志保存到指定路径的日志文件
+     * @param apiLog API调用日志实体
      */
     private void saveToLogFile(ApiLogEntity apiLog) {
+        String logMessage = buildLogMessage(apiLog);
+        
+        // 检查是否配置了日志文件路径
+        if (StringUtils.hasText(properties.getLogFilePath())) {
+            handleFileLogging(properties.getLogFilePath(), logMessage, apiLog.getStatusCode());
+        } else {
+            // 未配置日志文件路径，使用默认日志输出
+            logToLogger(logMessage, apiLog.getStatusCode());
+        }
+    }
+    
+    /**
+     * 构建日志消息
+     * @param apiLog API调用日志实体
+     * @return 格式化的日志消息
+     */
+    private String buildLogMessage(ApiLogEntity apiLog) {
         StringBuilder logMessageBuilder = new StringBuilder();
         logMessageBuilder.append("API调用记录 [")
                 .append(apiLog.getRequestId()).append("] - ")
@@ -87,51 +160,73 @@ public class ApiLogger {
             logMessageBuilder.append("异常信息: ").append(apiLog.getException()).append("\n");
         }
         
-        String logMessage = logMessageBuilder.toString();
+        return logMessageBuilder.toString();
+    }
+    
+    /**
+     * 处理文件日志记录
+     * @param logFilePath 日志文件路径
+     * @param logMessage 日志消息
+     * @param statusCode HTTP状态码
+     */
+    private void handleFileLogging(String logFilePath, String logMessage, int statusCode) {
+        File logDir = new File(logFilePath);
         
-        // 检查是否配置了日志文件路径
-        if (properties.getLogFilePath() != null && !properties.getLogFilePath().isEmpty()) {
-            // 确保日志目录存在
-            File logDir = new File(properties.getLogFilePath());
-            if (!logDir.exists() && !logDir.mkdirs()) {
-                logger.error("无法创建日志目录: {}", properties.getLogFilePath());
-                // 回退到默认日志输出
-                logToLogger(logMessage, apiLog.getStatusCode());
-                return;
-            }
-            
-            // 日志文件命名格式：api-monitor-yyyy-MM-dd.log
-            String logFileName = "api-monitor-" + new SimpleDateFormat("yyyy-MM-dd").format(new Date()) + ".log";
-            File logFile = new File(logDir, logFileName);
-            
-            String formattedLog = "[" + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date()) + "] " + logMessage;
-            
-            // 异步写入文件
-            logExecutor.execute(() -> {
-                writeToFile(logFile, formattedLog);
-            });
-        } else {
-            // 未配置日志文件路径，使用默认日志输出
-            logToLogger(logMessage, apiLog.getStatusCode());
+        // 确保日志目录存在
+        if (!ensureDirectoryExists(logDir)) {
+            logger.error("无法创建日志目录: {}", logFilePath);
+            // 回退到默认日志输出
+            logToLogger(logMessage, statusCode);
+            return;
         }
+        
+        // 生成带日期的日志文件名
+        String logFileName = "api-monitor-" + LocalDate.now().format(DATE_FORMATTER) + ".log";
+        File logFile = new File(logDir, logFileName);
+        
+        String formattedLog = "[" + LocalDateTime.now().format(DATETIME_FORMATTER) + "] " + logMessage;
+        
+        // 异步写入文件
+        logExecutor.execute(() -> {
+            try {
+                writeToFile(logFile, formattedLog);
+            } catch (Exception e) {
+                logger.error("异步写入日志文件失败", e);
+                // 记录到默认日志器作为备份
+                logger.info("备用日志记录: {}", formattedLog);
+            }
+        });
+    }
+    
+    /**
+     * 确保目录存在，如果不存在则创建
+     * @param directory 目录文件对象
+     * @return 是否成功创建或目录已存在
+     */
+    private boolean ensureDirectoryExists(File directory) {
+        if (directory == null) {
+            return false;
+        }
+        return directory.exists() || directory.mkdirs();
     }
     
     /**
      * 写入日志到文件
+     * @param logFile 日志文件
+     * @param logMessage 日志消息
+     * @throws IOException 当文件写入失败时抛出
      */
-    private void writeToFile(File logFile, String logMessage) {
+    private void writeToFile(File logFile, String logMessage) throws IOException {
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(logFile, true))) {
             writer.write(logMessage);
             writer.newLine();
-        } catch (IOException e) {
-            logger.error("写入日志到文件失败: {}", logFile.getAbsolutePath(), e);
-            // 回退到默认日志输出
-            logger.info("API请求: {}", logMessage);
         }
     }
     
     /**
      * 根据状态码记录日志到默认日志器
+     * @param logMessage 日志消息
+     * @param statusCode HTTP状态码
      */
     private void logToLogger(String logMessage, int statusCode) {
         if (statusCode >= 500) {
@@ -145,6 +240,7 @@ public class ApiLogger {
 
     /**
      * 保存日志到数据库
+     * @param apiLog API调用日志实体
      */
     private void saveToDatabase(ApiLogEntity apiLog) {
         try {
@@ -178,8 +274,12 @@ public class ApiLogger {
             );
         } catch (Exception e) {
             logger.error("保存API日志到数据库失败: {}", e.getMessage(), e);
-            // 如果数据库保存失败，尝试保存到日志文件
-            saveToLogFile(apiLog);
+            // 如果数据库保存失败，尝试保存到日志文件作为备份
+            try {
+                saveToLogFile(apiLog);
+            } catch (Exception fallbackException) {
+                logger.error("备份到文件日志也失败: {}", fallbackException.getMessage(), fallbackException);
+            }
         }
     }
 
