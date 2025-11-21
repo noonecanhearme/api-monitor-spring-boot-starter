@@ -1,5 +1,7 @@
 package io.github.noonecanhearme.apimonitor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.util.StringUtils;
 
@@ -11,85 +13,87 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * API监控配置属性类
- * 管理API监控的所有配置选项，包括日志记录、数据库存储和火焰图生成等功能
+ * API Monitor Configuration Properties Class
+ * Manages all configuration options for API monitoring, including log recording, database storage, and flame graph generation functions
  */
 @ConfigurationProperties(prefix = "api.monitor")
 public class ApiMonitorProperties {
 
+    private static final Logger logger = LoggerFactory.getLogger(ApiMonitorProperties.class);
+    
     /**
-     * 是否启用API监控
+     * Whether to enable API monitoring
      */
     private boolean enabled = true;
 
     /**
-     * 日志记录方式枚举
+     * Log recording method enumeration
      */
     public enum LogType {
         LOG, DATABASE
     }
     
     /**
-     * 日志记录方式：log（默认）或 database
+     * Log recording method: log (default) or database
      */
     private String logType = LogType.LOG.name().toLowerCase();
     
     /**
-     * 日志文件保存路径，默认为系统临时目录下的api-monitor-logs子目录
+     * Log file save path, default is api-monitor-logs subdirectory under system temporary directory
      */
     private String logFilePath = ensureTrailingSlash(System.getProperty("java.io.tmpdir")) + "api-monitor-logs";
 
     /**
-     * 数据库配置
+     * Database configuration
      */
     private DatabaseConfig database = new DatabaseConfig();
 
     /**
-     * 火焰图配置
+     * Flame graph configuration
      */
     private FlameGraphConfig flameGraph = new FlameGraphConfig();
 
     /**
-     * 是否记录请求体
+     * Whether to record request body
      */
     private boolean logRequestBody = true;
 
     /**
-     * 是否记录响应体
+     * Whether to record response body
      */
     private boolean logResponseBody = true;
 
     /**
-     * 忽略的URL路径
+     * URL paths to ignore
      */
     private String[] ignorePaths = new String[]{};
     
     /**
-     * 是否记录请求和响应头
+     * Whether to record request and response headers
      */
     private boolean logHeaders = false;
     
     /**
-     * 敏感头信息，需要在日志中过滤
+     * Sensitive header information that needs to be filtered in logs
      */
     private Set<String> sensitiveHeaders = new HashSet<>(Arrays.asList("authorization", "token", "secret", "password"));
     
     /**
-     * 是否异步记录日志
+     * Whether to record logs asynchronously
      */
     private boolean asyncLogging = true;
     
     /**
-     * 请求体最大长度（字节）
+     * Maximum request body length (bytes)
      */
-    private int requestBodyMaxLength = 1024 * 10; // 默认10KB
+    private int requestBodyMaxLength = 1024 * 10; // Default 10KB
     
     /**
-     * 响应体最大长度（字节）
+     * Maximum response body length (bytes)
      */
-    private int responseBodyMaxLength = 1024 * 10; // 默认10KB
+    private int responseBodyMaxLength = 1024 * 10; // Default 10KB
 
-    // getter和setter方法
+    // getter and setter methods
     public boolean isEnabled() {
         return enabled;
     }
@@ -187,25 +191,25 @@ public class ApiMonitorProperties {
     }
     
     /**
-     * 获取日志文件保存路径
-     * @return 日志文件保存路径
+     * Get log file save path
+     * @return Log file save path
      */
     public String getLogFilePath() {
         return logFilePath;
     }
     
     /**
-     * 设置日志文件保存路径
-     * @param logFilePath 日志文件保存路径
+     * Set log file save path
+     * @param logFilePath Log file save path
      */
     public void setLogFilePath(String logFilePath) {
         this.logFilePath = ensureTrailingSlash(logFilePath);
     }
     
     /**
-     * 确保路径以文件分隔符结尾
-     * @param path 路径字符串
-     * @return 以文件分隔符结尾的路径
+     * Ensure path ends with file separator
+     * @param path Path string
+     * @return Path ending with file separator
      */
     private String ensureTrailingSlash(String path) {
         if (!StringUtils.hasLength(path)) {
@@ -220,27 +224,27 @@ public class ApiMonitorProperties {
     }
     
     /**
-     * 验证配置有效性
+     * Validate configuration validity
      */
     @PostConstruct
     public void validate() {
-        // 验证日志类型
+        // Validate log type
         if (!LogType.LOG.name().toLowerCase().equals(logType) && 
             !LogType.DATABASE.name().toLowerCase().equals(logType)) {
             throw new IllegalArgumentException("Invalid logType: " + logType + ", must be 'log' or 'database'");
         }
         
-        // 验证敏感头信息集合不为空
+        // Validate sensitive headers set is not empty
         if (sensitiveHeaders == null) {
             sensitiveHeaders = new HashSet<>(Arrays.asList("authorization", "token", "secret", "password"));
         }
         
-        // 转换敏感头为小写，确保不区分大小写匹配
+        // Convert sensitive headers to lowercase to ensure case-insensitive matching
         sensitiveHeaders = sensitiveHeaders.stream()
                 .map(String::toLowerCase)
                 .collect(Collectors.toSet());
         
-        // 验证采样配置的合理性
+        // Validate sampling configuration rationality
         if (flameGraph != null) {
             if (flameGraph.getSamplingRate() <= 0) {
                 flameGraph.setSamplingRate(50);
@@ -252,31 +256,44 @@ public class ApiMonitorProperties {
                 flameGraph.setSamplingRate(flameGraph.getSamplingDuration() / 2);
             }
             
-            // 确保火焰图路径正确
+            // Validate output format
+            String format = flameGraph.getFormat().toLowerCase();
+            if (!Arrays.asList("html", "svg", "json").contains(format)) {
+                flameGraph.setFormat("html");
+                logger.warn("Invalid flame graph format: {}. Using default: html", format);
+            }
+            
+            // Validate event type
+            if (flameGraph.getEventType() == null) {
+                flameGraph.setEventType(FlameGraphEventType.CPU);
+                logger.warn("Event type not specified. Using default: CPU");
+            }
+            
+            // Ensure flame graph path is correct
             flameGraph.setSavePath(ensureTrailingSlash(flameGraph.getSavePath()));
         }
     }
 
     /**
-     * 数据库配置内部类
+     * Database configuration inner class
      */
     public static class DatabaseConfig {
         /**
-         * 是否启用数据库存储
+         * Whether to enable database storage
          */
         private boolean enabled = false;
 
         /**
-         * 数据库表名前缀
+         * Database table name prefix
          */
         private String tablePrefix = "api_";
 
         /**
-         * 是否自动创建表
+         * Whether to automatically create tables
          */
         private boolean autoCreateTable = true;
 
-        // getter和setter方法
+        // getter and setter methods
         public boolean isEnabled() {
             return enabled;
         }
@@ -303,35 +320,65 @@ public class ApiMonitorProperties {
     }
 
     /**
-     * 火焰图配置内部类
+     * Flame graph analysis event type enumeration
+     */
+    public enum FlameGraphEventType {
+        /**
+         * CPU usage analysis
+         */
+        CPU,
+        
+        /**
+         * Memory allocation analysis
+         */
+        ALLOC,
+        
+        /**
+         * Lock contention analysis
+         */
+        LOCK,
+        
+        /**
+         * Cache miss analysis
+         */
+        CACHE_MISSES
+    }
+
+    /**
+     * Flame graph configuration inner class
      */
     public static class FlameGraphConfig {
         /**
-         * 是否启用火焰图生成
+         * Whether to enable flame graph generation
          */
         private boolean enabled = false;
 
         /**
-         * 火焰图保存路径
+         * Flame graph save path
          */
         private String savePath = "./flamegraphs";
 
         /**
-         * 火焰图采样时长（毫秒）
+         * Flame graph sampling duration (milliseconds)
          */
         private int samplingDuration = 1000;
         
         /**
-         * 火焰图采样率（毫秒）
+         * Flame graph sampling rate (milliseconds)
          */
         private int samplingRate = 50;
         
         /**
-         * 火焰图输出格式，支持 html、svg、json，默认为 html
+         * Flame graph output format, supports html, svg, json, default is html
          */
         private String format = "html";
+        
+        /**
+         * Flame graph analysis event type, default is CPU analysis
+         */
+        private FlameGraphEventType eventType = FlameGraphEventType.CPU;
 
-        // getter和setter方法
+        // getter and setter methods
         public boolean isEnabled() {
             return enabled;
         }
@@ -370,6 +417,14 @@ public class ApiMonitorProperties {
         
         public void setFormat(String format) {
             this.format = format;
+        }
+        
+        public FlameGraphEventType getEventType() {
+            return eventType;
+        }
+        
+        public void setEventType(FlameGraphEventType eventType) {
+            this.eventType = eventType;
         }
     }
 }

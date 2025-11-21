@@ -10,7 +10,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 
 /**
- * 缓存HTTP请求体的请求包装类
+ * Request wrapper class for caching HTTP request body
  */
 public class CachedBodyHttpServletRequest extends HttpServletRequestWrapper {
 
@@ -18,7 +18,7 @@ public class CachedBodyHttpServletRequest extends HttpServletRequestWrapper {
 
     public CachedBodyHttpServletRequest(HttpServletRequest request) throws IOException {
         super(request);
-        // 读取请求体并缓存
+        // Read request body and cache it
         InputStream requestInputStream = request.getInputStream();
         this.cachedBody = StreamUtils.copyToByteArray(requestInputStream);
     }
@@ -35,14 +35,14 @@ public class CachedBodyHttpServletRequest extends HttpServletRequestWrapper {
     }
 
     /**
-     * 获取缓存的请求体字符串
+     * Get cached request body string
      */
     public String getCachedBody() {
         return new String(this.cachedBody, StandardCharsets.UTF_8);
     }
 
     /**
-     * 缓存的ServletInputStream实现
+     * Cached ServletInputStream implementation
      */
     private static class CachedBodyServletInputStream extends ServletInputStream {
 
@@ -64,7 +64,7 @@ public class CachedBodyHttpServletRequest extends HttpServletRequestWrapper {
 
         @Override
         public void setReadListener(ReadListener readListener) {
-            throw new UnsupportedOperationException("不支持异步读取");
+            throw new UnsupportedOperationException("Asynchronous reading not supported");
         }
 
         @Override

@@ -9,13 +9,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * 过滤器配置类
+ * Filter configuration class
  */
 @Configuration
 public class FilterConfig {
 
     /**
-     * 注册请求体缓存过滤器
+     * Register request body caching filter
      */
     @Bean
     @ConditionalOnProperty(prefix = "api.monitor", name = "enabled", havingValue = "true")
@@ -23,7 +23,7 @@ public class FilterConfig {
         FilterRegistrationBean registrationBean = new FilterRegistrationBean<>();
         registrationBean.setFilter(new RequestCachingFilter());
         registrationBean.addUrlPatterns("/*");
-        registrationBean.setOrder(Integer.MIN_VALUE + 1); // 设置较高优先级
+        registrationBean.setOrder(Integer.MIN_VALUE + 1); // Set higher priority
         registrationBean.setName("requestCachingFilter");
         return registrationBean;
     }

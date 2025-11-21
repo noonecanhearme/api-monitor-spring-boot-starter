@@ -3,7 +3,7 @@
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
     <servers>
-        <!-- Sonatype Central发布服务器配置 -->
+        <!-- Sonatype Central Publishing Server Configuration -->
         <server>
             <id>central</id>
             <username>YOUR_SONATYPE_USERNAME</username>
@@ -12,7 +12,7 @@
     </servers>
     
     <profiles>
-        <!-- GPG签名配置 -->
+        <!-- GPG Signing Configuration -->
         <profile>
             <id>gpg</id>
             <properties>
@@ -23,7 +23,7 @@
         </profile>
     </profiles>
     
-    <!-- 激活GPG配置 -->
+    <!-- Activate GPG Configuration -->
     <activeProfiles>
         <activeProfile>gpg</activeProfile>
     </activeProfiles>

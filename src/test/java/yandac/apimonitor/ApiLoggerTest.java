@@ -32,38 +32,39 @@ class ApiLoggerTest {
         when(properties.getDatabase()).thenReturn(databaseConfig);
         when(databaseConfig.isEnabled()).thenReturn(false);
         
-        // 创建临时目录用于测试
+        // Create temporary directory for testing
         tempLogDir = File.createTempFile("api-monitor-test", "");
-        tempLogDir.delete(); // 删除文件，创建目录
+        tempLogDir.delete(); // Delete file, create directory
         tempLogDir.mkdir();
         
         apiLogger = new ApiLogger(properties);
-        apiLogger.setJdbcTemplate(jdbcTemplate); // 注入模拟的JdbcTemplate，但模式是log，不会使用到
+        apiLogger.setJdbcTemplate(jdbcTemplate); // Inject mock JdbcTemplate, but it won't be used in log mode
     }
 
     @Test
     void testLogApiCallWithLogType() {
-        // 创建测试数据
+        // Create test data
         ApiLogEntity logEntity = new ApiLogEntity();
         logEntity.setRequestId("test-id");
         logEntity.setMethod("GET");
         logEntity.setUrl("/api/test");
         
-        // 执行被测试方法
+        // Execute the method under test
         apiLogger.log(logEntity);
         
-        // 简化测试，只确保方法执行不抛出异常
+        // Simplify the test to ensure the method executes without exceptions
         assertTrue(true, "Test should execute without errors");
     }
 
+    // Test functionality of storing API call logs to database
     @Test
     void testLogApiCallWithDatabaseType() {
-        // 设置为数据库模式
+        // Set to database mode
         when(properties.getLogType()).thenReturn("database");
         when(databaseConfig.isEnabled()).thenReturn(true);
         when(databaseConfig.isAutoCreateTable()).thenReturn(false);
         
-        // 创建测试数据
+        // Create test data
         ApiLogEntity logEntity = new ApiLogEntity();
         logEntity.setRequestId("test-id");
         logEntity.setMethod("GET");
@@ -73,31 +74,33 @@ class ApiLoggerTest {
         logEntity.setResponseBody("{\"result\":\"success\"}");
         logEntity.setException(null);
         
-        // 执行被测试方法
+        // Execute the method under test
         apiLogger.log(logEntity);
         
-        // 简化测试，只确保方法执行不抛出异常
+        // Simplify the test to ensure the method executes without exceptions
         assertTrue(true, "Test should execute without errors");
     }
 
+    // Test table creation functionality
     @Test
     void testCreateTable() {
-        // 设置为数据库模式
+        // Set to database mode
         when(databaseConfig.isEnabled()).thenReturn(true);
         when(databaseConfig.isAutoCreateTable()).thenReturn(true);
         when(databaseConfig.getTablePrefix()).thenReturn("api_");
         
-        // 由于createDatabaseTable是私有方法，我们简化测试
-        // 只确保测试能够运行，不抛出异常
+        // Since createDatabaseTable is a private method, we simplify the test
+        // Just ensure the test can run without exceptions
         assertTrue(true, "Test should execute without errors");
     }
     
+    // Test functionality of storing API call logs to file
     @Test
     void testLogWithCustomFilePath() throws Exception {
-        // 设置自定义日志路径
+        // Set custom log file path
         when(properties.getLogFilePath()).thenReturn(tempLogDir.getAbsolutePath());
         
-        // 创建测试数据
+        // Create test data
         ApiLogEntity logEntity = new ApiLogEntity();
         logEntity.setRequestId("test-custom-path");
         logEntity.setMethod("POST");
@@ -106,18 +109,18 @@ class ApiLoggerTest {
         logEntity.setIp("127.0.0.1");
         logEntity.setUserAgent("Mozilla/5.0");
         
-        // 执行被测试方法
+        // Execute the method under test
         apiLogger.log(logEntity);
         
-        // 短暂等待异步日志写入完成
+        // Briefly wait for asynchronous log writing to complete
         Thread.sleep(100);
         
-        // 检查日志文件是否创建
+        // Check if log files are created
         File[] logFiles = tempLogDir.listFiles((dir, name) -> name.startsWith("api-monitor-") && name.endsWith(".log"));
-        assertNotNull(logFiles, "日志文件应该被创建");
-        assertTrue(logFiles.length > 0, "应该至少有一个日志文件");
+        assertNotNull(logFiles, "Log files should be created");
+        assertTrue(logFiles.length > 0, "There should be at least one log file");
         
-        // 清理测试目录
+        // Clean up test directory
         for (File file : logFiles) {
             file.delete();
         }

@@ -6,13 +6,13 @@
 
     <groupId>io.github.noonecanhearme</groupId>
     <artifactId>api-monitor-spring-boot-starter</artifactId>
-    <version>1.0.2</version>
+    <version>1.0.3</version>
     <packaging>jar</packaging>
 
     <name>api-monitor-spring-boot-starter</name>
-    <description>API监控组件，提供接口调用记录和火焰图生成功能</description>
+    <description>API monitoring component that provides interface call recording and flame graph generation features</description>
     
-    <!-- 许可证信息 -->
+    <!-- License Information -->
     <licenses>
         <license>
             <name>Apache License, Version 2.0</name>
@@ -21,7 +21,7 @@
         </license>
     </licenses>
     
-    <!-- 开发者信息 -->
+    <!-- Developer Information -->
     <developers>
         <developer>
             <name>yandac</name>
@@ -31,7 +31,7 @@
         </developer>
     </developers>
     
-    <!-- 源代码管理信息 -->
+    <!-- Source Code Management Information -->
     <scm>
         <connection>scm:git:git://github.com/noonecanhearme/api-monitor-spring-boot-starter.git</connection>
         <developerConnection>scm:git:ssh://github.com/noonecanhearme/api-monitor-spring-boot-starter.git</developerConnection>
@@ -54,7 +54,7 @@
     </properties>
 
     <dependencies>
-        <!-- Spring Boot 核心依赖 -->
+        <!-- Spring Boot Core Dependencies -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
@@ -88,14 +88,14 @@
             <artifactId>spring-boot-starter-jdbc</artifactId>
             <optional>true</optional>
         </dependency>
-        <!-- 日志依赖 -->
+        <!-- Logging Dependencies -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <scope>provided</scope>
         </dependency>
 
-        <!-- 数据库驱动 -->
+        <!-- Database Drivers -->
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
@@ -117,7 +117,7 @@
 
 
 
-        <!-- 火焰图生成依赖 -->
+        <!-- Flame Graph Generation Dependencies -->
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-text</artifactId>
@@ -129,7 +129,7 @@
             <version>11.1.0</version>
             <scope>provided</scope>
         </dependency>
-        <!-- 确保使用javax.servlet -->
+        <!-- Ensure Using javax.servlet -->
         <dependency>
             <groupId>javax.servlet</groupId>
             <artifactId>javax.servlet-api</artifactId>
@@ -137,7 +137,7 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- 测试依赖 -->
+        <!-- Test Dependencies -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -166,7 +166,7 @@
     </pluginRepositories>
     <build>
         <plugins>
-            <!-- 移除自动发布插件，改为手动上传模式 -->
+            <!-- Remove auto-publishing plugin, switch to manual upload mode -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
@@ -230,7 +230,7 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- 添加distributionManagement配置，确保文件路径格式正确 -->
+            <!-- Add distributionManagement configuration, ensure correct file path format -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
@@ -243,7 +243,7 @@
                     </descriptorRefs>
                 </configuration>
             </plugin>
-            <!-- 添加生成MD5和SHA1校验和的插件 -->
+            <!-- Add plugins to generate MD5 and SHA1 checksums -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-install-plugin</artifactId>
@@ -255,7 +255,7 @@
         </plugins>
     </build>
     
-    <!-- 添加distributionManagement配置，确保正确的文件路径格式 -->
+    <!-- Add distributionManagement configuration, ensure correct file path format -->
     <distributionManagement>
         <repository>
             <id>central</id>
@@ -283,7 +283,7 @@
                             </execution>
                         </executions>
                     </plugin>
-                    <!-- 使用antrun插件生成MD5和SHA1校验和文件 -->
+                    <!-- Use antrun plugin to generate MD5 and SHA1 checksum files -->
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-antrun-plugin</artifactId>
@@ -315,10 +315,9 @@
         </profile>
     </profiles>
     
-    <!-- 发布说明：
-         1. 已切换为手动上传模式
-         2. 构建产物将生成在target目录，包含jar、sources.jar及其对应的签名文件(.asc)
-         3. 请使用Sonatype Central UI或Nexus CLI工具手动上传构建产物
-         4. 上传前请确保已完成GPG签名
-    -->
+    <!-- Publishing Notes:
+    1. Switched to manual upload mode
+    2. Build artifacts will be generated in the target directory, including jar, sources.jar and their corresponding signature files (.asc)
+    3. Please use Sonatype Central UI or Nexus CLI tools to manually upload build artifacts
+    4. Please ensure GPG signing is completed before uploading -->
 </project>

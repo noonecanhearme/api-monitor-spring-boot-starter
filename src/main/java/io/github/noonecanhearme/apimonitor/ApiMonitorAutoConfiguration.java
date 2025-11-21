@@ -13,19 +13,19 @@ import io.github.noonecanhearme.apimonitor.aspect.ApiLogAspect;
 
 
 /**
- * API监控自动配置类
+ * API monitoring auto-configuration class
  * <p>
- * 负责自动配置API监控所需的所有组件，包括日志记录器、切面、火焰图生成器等。
- * 当应用启动时，Spring Boot会根据配置自动初始化这些Bean。
+ * Responsible for auto-configuring all components needed for API monitoring, including log recorder, aspect, flame graph generator, etc.
+ * When the application starts, Spring Boot will automatically initialize these beans based on the configuration.
  */
 @Configuration
 @EnableConfigurationProperties(ApiMonitorProperties.class)
 public class ApiMonitorAutoConfiguration {
 
     /**
-     * 配置API日志记录器
-     * @param properties API监控配置属性
-     * @return ApiLogger实例
+     * Configure API logger
+     * @param properties API monitoring configuration properties
+     * @return ApiLogger instance
      */
     @Bean
     @ConditionalOnMissingBean
@@ -34,11 +34,11 @@ public class ApiMonitorAutoConfiguration {
     }
 
     /**
-     * 配置API切面
-     * @param apiLogger API日志记录器
-     * @param properties API监控配置属性
-     * @param flameGraphGenerator 火焰图生成器
-     * @return ApiLogAspect实例
+     * Configure API aspect
+     * @param apiLogger API logger
+     * @param properties API monitoring configuration properties
+     * @param flameGraphGenerator Flame graph generator
+     * @return ApiLogAspect instance
      */
     @Bean
     @ConditionalOnMissingBean
@@ -47,9 +47,9 @@ public class ApiMonitorAutoConfiguration {
     }
 
     /**
-     * 配置火焰图生成器
-     * @param properties API监控配置属性
-     * @return FlameGraphGenerator实例
+     * Configure flame graph generator
+     * @param properties API monitoring configuration properties
+     * @return FlameGraphGenerator instance
      */
     @Bean
     @ConditionalOnMissingBean
@@ -58,10 +58,10 @@ public class ApiMonitorAutoConfiguration {
     }
 
     /**
-     * 配置JdbcTemplate到ApiLogger的注入，避免循环依赖
-     * @param apiLogger API日志记录器
-     * @param jdbcTemplate JdbcTemplate实例
-     * @return JdbcTemplateConfigurer实例
+     * Configure JdbcTemplate injection to ApiLogger to avoid circular dependency
+     * @param apiLogger API logger
+     * @param jdbcTemplate JdbcTemplate instance
+     * @return JdbcTemplateConfigurer instance
      */
     @Bean
     @ConditionalOnProperty(prefix = "api.monitor.database", name = "enabled", havingValue = "true")
@@ -71,8 +71,8 @@ public class ApiMonitorAutoConfiguration {
     }
 
     /**
-     * JdbcTemplate配置器，用于延迟注入JdbcTemplate到ApiLogger
-     * 解决JdbcTemplate和ApiLogger之间可能出现的循环依赖问题
+     * JdbcTemplate configurer, used for delayed injection of JdbcTemplate into ApiLogger
+     * Solves potential circular dependency issues between JdbcTemplate and ApiLogger
      */
     public static class JdbcTemplateConfigurer {
         private final ApiLogger apiLogger;
