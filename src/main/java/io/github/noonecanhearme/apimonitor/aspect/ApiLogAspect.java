@@ -5,36 +5,41 @@ import io.github.noonecanhearme.apimonitor.ApiLogger;
 import io.github.noonecanhearme.apimonitor.FlameGraphGenerator;
 import io.github.noonecanhearme.apimonitor.annotation.EnableFlameGraph;
 import io.github.noonecanhearme.apimonitor.entity.ApiLogEntity;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
-import org.springframework.http.HttpHeaders;
-import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 /**
  * API日志切面类
+ * 负责拦截并记录API调用的详细信息，支持日志记录和火焰图生成功能
  */
 @Aspect
 @Order(0)  // 设置优先级，确保在其他切面之前执行
 public class ApiLogAspect {
 
+    private static final Logger logger = LoggerFactory.getLogger(ApiLogAspect.class);
     private final ApiLogger apiLogger;
     private final ApiMonitorProperties properties;
     private final FlameGraphGenerator flameGraphGenerator;
@@ -128,13 +133,20 @@ public class ApiLogAspect {
         Method method = signature.getMethod();
         EnableFlameGraph flameGraphAnnotation = method.getAnnotation(EnableFlameGraph.class);
         boolean generateFlameGraph = flameGraphAnnotation != null;
+        boolean flameGraphStarted = false;
 
         try {
             // 如果需要生成火焰图，则启动火焰图生成
             if (generateFlameGraph && properties.getFlameGraph().isEnabled()) {
-                // 可以在这里处理注解参数，比如自定义采样时长
-                // 由于FlameGraphGenerator内部已经使用配置的采样时长，这里简化处理
-                flameGraphGenerator.startProfiling(apiLog.getRequestId());
+                try {
+                    // 可以在这里处理注解参数，比如自定义采样时长
+                    // 由于FlameGraphGenerator内部已经使用配置的采样时长，这里简化处理
+                    flameGraphGenerator.startProfiling(apiLog.getRequestId());
+                    flameGraphStarted = true;
+                } catch (Exception e) {
+                    logger.error("启动火焰图生成失败", e);
+                    // 火焰图生成失败不应影响API的正常执行
+                }
             }
 
             // 执行原方法
@@ -189,15 +201,30 @@ public class ApiLogAspect {
             throw throwable;
         } finally {
             // 停止火焰图生成
-            if (generateFlameGraph && properties.getFlameGraph().isEnabled()) {
-                flameGraphGenerator.stopProfiling(apiLog.getRequestId());
+            if (flameGraphStarted) {
+                try {
+                    flameGraphGenerator.stopProfiling(apiLog.getRequestId());
+                } catch (Exception e) {
+                    logger.error("停止火焰图生成失败", e);
+                    // 记录失败不应影响主流程
+                }
             }
 
             // 异步记录日志，避免影响响应性能
             if (properties.isAsyncLogging()) {
-                CompletableFuture.runAsync(() -> apiLogger.log(apiLog));
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        apiLogger.log(apiLog);
+                    } catch (Exception e) {
+                        logger.error("异步记录API日志失败", e);
+                    }
+                });
             } else {
-                apiLogger.log(apiLog);
+                try {
+                    apiLogger.log(apiLog);
+                } catch (Exception e) {
+                    logger.error("同步记录API日志失败", e);
+                }
             }
         }
     }
@@ -277,14 +304,21 @@ public class ApiLogAspect {
     
     /**
      * 检查是否为敏感头信息
+     * @param headerName 头信息名称
+     * @return 是否为敏感头信息
      */
     private boolean isSensitiveHeader(String headerName) {
+        if (StringUtils.isEmpty(headerName)) {
+            return false;
+        }
+        
         String lowerHeader = headerName.toLowerCase();
         return lowerHeader.contains("authorization") || 
                lowerHeader.contains("token") || 
                lowerHeader.contains("secret") || 
                lowerHeader.contains("password") ||
-               properties.getSensitiveHeaders().contains(lowerHeader);
+               (properties.getSensitiveHeaders() != null && 
+                properties.getSensitiveHeaders().contains(lowerHeader));
     }
 
 
