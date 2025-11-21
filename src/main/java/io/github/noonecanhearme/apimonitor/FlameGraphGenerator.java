@@ -84,33 +84,55 @@ public class FlameGraphGenerator implements DisposableBean {
      */
     public void startProfiling(String requestId, String methodSignature) {
         try {
+            logger.debug("Attempting to start profiling for requestId={}, method={}", requestId, methodSignature);
+            
             // Check if flame graph feature is enabled
             if (!properties.getFlameGraph().isEnabled()) {
+                logger.debug("Flame graph feature is disabled, skipping profiling for requestId={}", requestId);
                 return;
             }
 
             // Check if CPU time analysis is supported
             if (!threadMXBean.isThreadCpuTimeSupported()) {
-                logger.warn("JVM does not support CPU time analysis, unable to generate flame graph");
+                logger.warn("JVM does not support CPU time analysis, unable to generate flame graph for requestId={}", requestId);
                 return;
             }
 
             // Enable CPU time analysis
             if (!threadMXBean.isThreadCpuTimeEnabled()) {
+                logger.debug("Enabling CPU time analysis for JVM");
                 threadMXBean.setThreadCpuTimeEnabled(true);
             }
+
+            // Check if request is already being profiled
+            if (activeProfilerTasks.containsKey(requestId)) {
+                logger.warn("Profiling already active for requestId={}, skipping duplicate request", requestId);
+                return;
+            }
+
+            // Get and log current configuration
+            int samplingRate = properties.getFlameGraph().getSamplingRate();
+            int duration = properties.getFlameGraph().getSamplingDuration();
+            String format = properties.getFlameGraph().getFormat();
+            ApiMonitorProperties.FlameGraphEventType eventType = properties.getFlameGraph().getEventType();
+            
+            logger.debug("Profiler configuration for requestId={}: samplingRate={}ms, duration={}ms, format={}, eventType={}",
+                        requestId, samplingRate, duration, format, eventType);
 
             // Create profiling task
             ProfilerTask task = new ProfilerTask(requestId, methodSignature);
             activeProfilerTasks.put(requestId, task);
 
-            // Get configured sampling rate
-            int samplingRate = properties.getFlameGraph().getSamplingRate();
+            // Schedule the task
+            logger.debug("Scheduling profiling task for requestId={} with initial delay 0ms and period {}ms", 
+                        requestId, samplingRate);
             scheduler.scheduleAtFixedRate(task, 0, samplingRate, TimeUnit.MILLISECONDS);
 
-            logger.info("Started profiling for request [{}] {}", requestId, methodSignature != null ? "(" + methodSignature + ")" : "");
+            logger.info("Started profiling for request [{}] {}", 
+                       requestId, methodSignature != null ? "(" + methodSignature + ")" : "");
+            logger.debug("Active profiling tasks count: {}", activeProfilerTasks.size());
         } catch (Exception e) {
-            logger.error("Failed to start profiling: {}", e.getMessage(), e);
+            logger.error("Failed to start profiling for requestId={}: {}", requestId, e.getMessage(), e);
         }
     }
 
@@ -120,21 +142,34 @@ public class FlameGraphGenerator implements DisposableBean {
      */
     public String stopProfiling(String requestId) {
         try {
+            logger.debug("Attempting to stop profiling for requestId={}", requestId);
+            
             ProfilerTask task = activeProfilerTasks.remove(requestId);
             if (task != null) {
+                logger.debug("Found active profiling task for requestId={}, stopping it", requestId);
                 task.stop();
                 
                 // Wait for sampling task to complete
-                Thread.sleep(100);
+                int waitTime = 100;
+                logger.debug("Waiting {}ms for sampling task to complete for requestId={}", waitTime, requestId);
+                Thread.sleep(waitTime);
+                
+                // Get collected stack traces
+                Map<String, Integer> stackTraces = task.getStackTraces();
+                logger.debug("Task for requestId={} collected {} stack trace samples", 
+                           requestId, stackTraces.size());
                 
                 // Generate flame graph
-                String flameGraphPath = generateFlameGraph(requestId, task.getStackTraces(), task.getMethodSignature());
+                String flameGraphPath = generateFlameGraph(requestId, stackTraces, task.getMethodSignature());
                 
                 logger.info("Profiling for request [{}] completed, flame graph generated", requestId);
+                logger.debug("Active profiling tasks count after stopping: {}", activeProfilerTasks.size());
                 return flameGraphPath;
+            } else {
+                logger.warn("No active profiling task found for requestId={}", requestId);
             }
         } catch (Exception e) {
-            logger.error("Failed to stop profiling: {}", e.getMessage(), e);
+            logger.error("Failed to stop profiling for requestId={}: {}", requestId, e.getMessage(), e);
         }
         return null;
     }
@@ -144,18 +179,29 @@ public class FlameGraphGenerator implements DisposableBean {
      */
     private String generateFlameGraph(String requestId, Map<String, Integer> stackTraces, String methodSignature) {
         try {
+            logger.debug("Starting to generate flame graph for requestId={}, method={}", requestId, methodSignature);
+            
             if (stackTraces.isEmpty()) {
-                logger.warn("Not enough stack information collected, unable to generate flame graph");
+                logger.warn("Not enough stack information collected for requestId={}, unable to generate flame graph", requestId);
                 return null;
             }
+            
+            logger.debug("Collected {} stack trace samples for requestId={}", stackTraces.size(), requestId);
+            
+            // Calculate total samples before filtering
+            int totalSamples = stackTraces.values().stream().mapToInt(Integer::intValue).sum();
+            logger.debug("Total stack trace samples count: {} for requestId={}", totalSamples, requestId);
 
             // Filter low-frequency samples to reduce noise
             Map<String, Integer> filteredStacks = stackTraces.entrySet().stream()
                     .filter(entry -> entry.getValue() >= MIN_SAMPLE_COUNT)
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
             
+            logger.debug("After filtering, remaining {} stack trace samples for requestId={}", filteredStacks.size(), requestId);
+            
             if (filteredStacks.isEmpty()) {
-                logger.warn("Not enough stack information after filtering, unable to generate flame graph");
+                logger.warn("Not enough stack information after filtering (min count: {}) for requestId={}, unable to generate flame graph", 
+                           MIN_SAMPLE_COUNT, requestId);
                 return null;
             }
 
@@ -168,17 +214,25 @@ public class FlameGraphGenerator implements DisposableBean {
             }
             fileName += "_" + timestamp;
             
+            logger.debug("Generated file name: {} for requestId={}", fileName, requestId);
+            
             // Generate folded stack format file (raw data)
             File flameGraphFile = new File(flameGraphDir, fileName + ".txt");
+            logger.debug("Saving raw stack data to: {} for requestId={}", flameGraphFile.getAbsolutePath(), requestId);
             
+            int writtenLines = 0;
             try (FileWriter writer = new FileWriter(flameGraphFile)) {
                 for (Map.Entry<String, Integer> entry : filteredStacks.entrySet()) {
                     writer.write(entry.getKey() + " " + entry.getValue() + "\n");
+                    writtenLines++;
                 }
             }
             
+            logger.debug("Successfully wrote {} lines of stack data for requestId={}", writtenLines, requestId);
+            
             // Generate flame graph according to configured format
             String format = properties.getFlameGraph().getFormat().toLowerCase();
+            logger.debug("Generating {} format flame graph for requestId={}", format, requestId);
             String outputPath = null;
             
             switch (format) {
@@ -192,7 +246,8 @@ public class FlameGraphGenerator implements DisposableBean {
                     outputPath = generateJsonFlameGraph(fileName, filteredStacks);
                     break;
                 default:
-                    logger.warn("Unsupported flame graph format: {}, generating HTML format by default", format);
+                    logger.warn("Unsupported flame graph format: {}, generating HTML format by default for requestId={}", 
+                               format, requestId);
                     outputPath = generateHtmlFlameGraph(fileName, filteredStacks);
                     break;
             }
@@ -200,12 +255,15 @@ public class FlameGraphGenerator implements DisposableBean {
             logger.info("Flame graph raw data saved to: {}", flameGraphFile.getAbsolutePath());
             if (outputPath != null) {
                 logger.info("{} format flame graph saved to: {}", format.toUpperCase(), outputPath);
+                logger.debug("Flame graph generation completed successfully for requestId={}", requestId);
                 return outputPath;
+            } else {
+                logger.warn("Failed to generate formatted flame graph, only raw data is available for requestId={}", requestId);
             }
             
             return flameGraphFile.getAbsolutePath();
         } catch (IOException e) {
-            logger.error("Failed to generate flame graph: {}", e.getMessage(), e);
+            logger.error("Failed to generate flame graph for requestId={}: {}", requestId, e.getMessage(), e);
             return null;
         }
     }
@@ -218,277 +276,251 @@ public class FlameGraphGenerator implements DisposableBean {
             File htmlFile = new File(flameGraphDir, fileName + ".html");
             
             try (PrintWriter writer = new PrintWriter(htmlFile)) {
-                // HTML header
+                // Generate HTML file exactly matching the reference format
                 writer.println("<!DOCTYPE html>");
-                writer.println("<html lang=\"en-US\">");
+                writer.println("<html lang='en'>");
                 writer.println("<head>");
-                writer.println("    <meta charset=\"UTF-8\">");
-                writer.println("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
-                writer.println("    <title>API Monitoring - Flame Graph</title>");
-                writer.println("        <style>");
-                writer.println("            body { font-family: 'Consolas', 'Monaco', monospace; margin: 0; padding: 0; background-color: #000000; color: #FFFFFF; line-height: 1.6; }");
-                writer.println("            .container { max-width: 100%; margin: 0 auto; padding: 20px; }");
-                writer.println("            h1 { color: #FFFFFF; font-size: 28px; margin-bottom: 20px; font-weight: 600; }");
-                writer.println("            .controls { margin-bottom: 20px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }");
-                writer.println("            .control-item { display: flex; align-items: center; gap: 10px; }");
-                writer.println("            button { background-color: #333; color: #fff; border: 1px solid #555; padding: 8px 16px; border-radius: 4px; cursor: pointer; transition: all 0.3s ease; }");
-                writer.println("            button:hover { background-color: #555; border-color: #777; }");
-                writer.println("            select { background-color: #333; color: #fff; border: 1px solid #555; padding: 8px 12px; border-radius: 4px; }");
-                writer.println("            .stats { margin-bottom: 20px; padding: 15px; background-color: #1a1a1a; border-radius: 6px; display: flex; gap: 30px; flex-wrap: wrap; }");
-                writer.println("            .stats p { margin: 5px 0; color: #cccccc; font-size: 14px; }");
-                writer.println("            .stats strong { color: #ffffff; }");
-                writer.println("            .flame-container { position: relative; width: 100%; height: 800px; overflow: auto; background-color: #1a1a1a; border-radius: 6px; padding: 20px; border: 1px solid #333; }");
-                writer.println("            .flame-row { position: relative; height: 24px; margin-bottom: 1px; display: flex; align-items: center; }");
-                writer.println("            .flame-cell { position: absolute; height: 100%; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #000000; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: all 0.2s ease; border-radius: 2px; }");
-                writer.println("            .flame-cell:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.3); }");
-                writer.println("            .flame-cell:active { transform: translateY(0); }");
-                writer.println("            .legend { margin-top: 20px; padding: 15px; background-color: #1a1a1a; border-radius: 6px; border: 1px solid #333; }");
-                writer.println("            .legend h3 { margin-top: 0; color: #ffffff; font-size: 18px; margin-bottom: 15px; }");
-                writer.println("            .legend-item { display: inline-block; margin-right: 30px; margin-bottom: 10px; font-size: 14px; }");
-                writer.println("            .legend-color { display: inline-block; width: 20px; height: 20px; margin-right: 8px; vertical-align: middle; border-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }");
-                writer.println("            .tooltip { position: absolute; background-color: rgba(0,0,0,0.9); color: white; padding: 12px; border-radius: 6px; font-size: 13px; pointer-events: none; z-index: 1000; max-width: 450px; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border: 1px solid #444; }");
-                writer.println("            .tooltip strong { color: #4CAF50; }");
-                writer.println("            .footer { margin-top: 20px; text-align: center; color: #666; font-size: 12px; }");
-                writer.println("            .frame-info { margin-top: 15px; padding: 10px; background-color: #252525; border-radius: 4px; font-size: 12px; }");
-                writer.println("            .frame-info pre { margin: 0; white-space: pre-wrap; word-break: break-all; }");
-                
-                // Define colors for different event types, using gradients and higher contrast
-                writer.println("            .event-cpu { background: linear-gradient(90deg, #00FF00, #00CC00); color: #000; font-weight: 500; }");
-                writer.println("            .event-alloc { background: linear-gradient(90deg, #0080FF, #0066CC); color: #fff; text-shadow: 1px 1px 1px rgba(0,0,0,0.5); font-weight: 500; }");
-                writer.println("            .event-lock { background: linear-gradient(90deg, #FF0000, #CC0000); color: #fff; text-shadow: 1px 1px 1px rgba(0,0,0,0.5); font-weight: 500; }");
-                writer.println("            .event-cache-misses { background: linear-gradient(90deg, #FFFF00, #CCCC00); color: #000; font-weight: 500; }");
-                
-                // Define colors for different package levels, using more vibrant color scheme
-                writer.println("            .pkg-java { background: linear-gradient(90deg, #a6cee3, #8ab8d8); }");
-                writer.println("            .pkg-com { background: linear-gradient(90deg, #1f78b4, #1868a4); color: #fff; text-shadow: 0.5px 0.5px 1px rgba(0,0,0,0.3); }");
-                writer.println("            .pkg-org { background: linear-gradient(90deg, #b2df8a, #98cd70); }");
-                writer.println("            .pkg-io { background: linear-gradient(90deg, #33a02c, #288020); color: #fff; text-shadow: 0.5px 0.5px 1px rgba(0,0,0,0.3); }");
-                writer.println("            .pkg-javax { background: linear-gradient(90deg, #fb9a99, #f87d7b); }");
-                writer.println("            .pkg-other { background: linear-gradient(90deg, #fdbf6f, #e9af5d); }");
-                writer.println("        </style>");
+                writer.println("<meta charset='utf-8'>");
+                writer.println("<style>");
+                writer.println("\tbody {margin: 0; padding: 10px; background-color: #ffffff}");
+                writer.println("\th1 {margin: 5px 0 0 0; font-size: 18px; font-weight: normal; text-align: center}");
+                writer.println("\theader {margin: -24px 0 5px 0; line-height: 24px}");
+                writer.println("\tbutton {font: 12px sans-serif; cursor: pointer}");
+                writer.println("\tp {margin: 5px 0 5px 0}");
+                writer.println("\ta {color: #0366d6}");
+                writer.println("\t#hl {position: absolute; display: none; overflow: hidden; white-space: nowrap; pointer-events: none; background-color: #ffffe0; outline: 1px solid #ffc000; height: 15px}");
+                writer.println("\t#hl span {padding: 0 3px 0 3px}");
+                writer.println("\t#status {overflow: hidden; white-space: nowrap}");
+                writer.println("\t#match {overflow: hidden; white-space: nowrap; display: none; float: right; text-align: right}");
+                writer.println("\t#reset {cursor: pointer}");
+                writer.println("\t#canvas {width: 100%; height: 4224px}");
+                writer.println("</style>");
                 writer.println("</head>");
-                writer.println("<body>");
-                writer.println("    <div class=\"container\">");
-                writer.println("        <h1>API Call Flame Graph Analysis</h1>");
+                writer.println("<body style='font: 12px Verdana, sans-serif'>");
+                writer.println("<h1>CPU profile</h1>");
+                writer.println("<header style='text-align: left'><button id='reverse' title='Reverse'>&#x1f53b;</button>&nbsp;&nbsp;<button id='search' title='Search'>&#x1f50d;</button></header>");
+                writer.println("<header style='text-align: right'>Produced by <a href='https://github.com/jvm-profiling-tools/async-profiler'>async-profiler</a></header>");
+                writer.println("<canvas id='canvas'></canvas>");
+                writer.println("<div id='hl'><span></span></div>");
+                writer.println("<p id='match'>Matched: <span id='matchval'></span> <span id='reset' title='Clear'>&#x274c;</span></p>");
+                writer.println("<p id='status'>&nbsp;</p>");
+                writer.println("<script>");
+                writer.println("\t// Copyright 2020 Andrei Pangin");
+                writer.println("\t// Licensed under the Apache License, Version 2.0.");
+                writer.println("\t'use strict';");
+                writer.println("\tvar root, rootLevel, px, pattern;");
+                writer.println("\tvar reverse = false;");
+                writer.println("\tconst levels = Array(264);");
+                writer.println("\tfor (let h = 0; h < levels.length; h++) {");
+                writer.println("\t\tlevels[h] = [];");
+                writer.println("\t}");
+                writer.println();
+                writer.println("\tconst canvas = document.getElementById('canvas');");
+                writer.println("\tconst c = canvas.getContext('2d');");
+                writer.println("\tconst hl = document.getElementById('hl');");
+                writer.println("\tconst status = document.getElementById('status');");
+                writer.println();
+                writer.println("\tconst canvasWidth = canvas.offsetWidth;");
+                writer.println("\tconst canvasHeight = canvas.offsetHeight;");
+                writer.println("\tcanvas.style.width = canvasWidth + 'px';");
+                writer.println("\tcanvas.width = canvasWidth * (devicePixelRatio || 1);");
+                writer.println("\tcanvas.height = canvasHeight * (devicePixelRatio || 1);");
+                writer.println("\tif (devicePixelRatio) c.scale(devicePixelRatio, devicePixelRatio);");
+                writer.println("\tc.font = document.body.style.font;");
+                writer.println();
+                writer.println("\tconst palette = [");
+                writer.println("\t\t[0xb2e1b2, 20, 20, 20],");
+                writer.println("\t\t[0x50e150, 30, 30, 30],");
+                writer.println("\t\t[0x50cccc, 30, 30, 30],");
+                writer.println("\t\t[0xe15a5a, 30, 40, 40],");
+                writer.println("\t\t[0xc8c83c, 30, 30, 10],");
+                writer.println("\t\t[0xe17d00, 30, 30,  0],");
+                writer.println("\t\t[0xcce880, 20, 20, 20],");
+                writer.println("\t];");
+                writer.println();
+                writer.println("\tfunction getColor(p) {");
+                writer.println("\t\tconst v = Math.random();");
+                writer.println("\t\treturn '#' + (p[0] + ((p[1] * v) << 16 | (p[2] * v) << 8 | (p[3] * v))).toString(16);");
+                writer.println("\t}");
+                writer.println();
+                writer.println("\tfunction f(level, left, width, type, title, inln, c1, int) {");
+                writer.println("\t\tlevels[level].push({left: left, width: width, color: getColor(palette[type]), title: title,");
+                writer.println("\t\t\tdetails: (int ? ', int=' + int : '') + (c1 ? ', c1=' + c1 : '') + (inln ? ', inln=' + inln : '')");
+                writer.println("\t\t});");
+                writer.println("\t}");
+                writer.println();
+                writer.println("\tfunction samples(n) {");
+                writer.println("\t\treturn n === 1 ? '1 sample' : n.toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',') + ' samples';");
+                writer.println("\t}");
+                writer.println();
+                writer.println("\tfunction pct(a, b) {");
+                writer.println("\t\treturn a >= b ? '100' : (100 * a / b).toFixed(2);");
+                writer.println("\t}");
+                writer.println();
+                writer.println("\tfunction findFrame(frames, x) {");
+                writer.println("\t\tlet left = 0;");
+                writer.println("\t\tlet right = frames.length - 1;");
+                writer.println();
+                writer.println("\t\twhile (left <= right) {");
+                writer.println("\t\t\tconst mid = (left + right) >>> 1;");
+                writer.println("\t\t\tconst f = frames[mid];");
+                writer.println();
+                writer.println("\t\t\tif (f.left > x) {");
+                writer.println("\t\t\t\tright = mid - 1;");
+                writer.println("\t\t\t} else if (f.left + f.width <= x) {");
+                writer.println("\t\t\t\tleft = mid + 1;");
+                writer.println("\t\t\t} else {");
+                writer.println("\t\t\t\treturn f;");
+                writer.println("\t\t\t}");
+                writer.println("\t\t}");
+                writer.println();
+                writer.println("\t\tif (frames[left] && (frames[left].left - x) * px < 0.5) return frames[left];");
+                writer.println("\t\tif (frames[right] && (x - (frames[right].left + frames[right].width)) * px < 0.5) return frames[right];");
+                writer.println();
+                writer.println("\t\treturn null;");
+                writer.println("\t}");
+                writer.println();
+                writer.println("\tfunction search(r) {");
+                writer.println("\t\tif (r === true && (r = prompt('Enter regexp to search:', '')) === null) {");
+                writer.println("\t\t\treturn;");
+                writer.println("\t\t}");
+                writer.println();
+                writer.println("\t\tpattern = r ? RegExp(r) : undefined;");
+                writer.println("\t\tconst matched = render(root, rootLevel);");
+                writer.println("\t\tdocument.getElementById('matchval').textContent = pct(matched, root.width) + '%';");
+                writer.println("\t\tdocument.getElementById('match').style.display = r ? 'inherit' : 'none';");
+                writer.println("\t}");
+                writer.println();
+                writer.println("\tfunction render(newRoot, newLevel) {");
+                writer.println("\t\tif (root) {");
+                writer.println("\t\t\tc.fillStyle = '#ffffff';");
+                writer.println("\t\t\tc.fillRect(0, 0, canvasWidth, canvasHeight);");
+                writer.println("\t\t}");
+                writer.println();
+                writer.println("\t\troot = newRoot || levels[0][0];");
+                writer.println("\t\trootLevel = newLevel || 0;");
+                writer.println("\t\tpx = canvasWidth / root.width;");
+                writer.println();
+                writer.println("\t\t// Define visible range");
+                writer.println("\t\tconst x0 = root.left;");
+                writer.println("\t\tconst x1 = root.left + root.width;");
+                writer.println("\t\t// Properly declare marked variable as object");
+                writer.println("\t\tlet marked = {};");
+                writer.println();
+                writer.println("\t\tfunction mark(f) {");
+                writer.println("\t\t\treturn marked[f.left] >= f.width || (marked[f.left] = f.width);");
+                writer.println("\t\t}");
+                writer.println();
+                writer.println("\t\tfunction totalMarked() {");
+                writer.println("\t\t\tlet total = 0;");
+                writer.println("\t\t\tlet left = 0;");
+                writer.println("\t\t\tObject.keys(marked).sort(function(a, b) { return a - b; }).forEach(function(x) {");
+                writer.println("\t\t\t\tif (+x >= left) {");
+                writer.println("\t\t\t\t\ttotal += marked[x];");
+                writer.println("\t\t\t\t\tleft = +x + marked[x];");
+                writer.println("\t\t\t\t}");
+                writer.println("\t\t\t});");
+                writer.println("\t\t\treturn total;");
+                writer.println("\t\t}");
+                writer.println();
+                writer.println("\t\tfunction drawFrame(f, y, alpha) {");
+                writer.println("\t\t\tif (f.left < x1 && f.left + f.width > x0) {");
+                writer.println("\t\t\t\tc.fillStyle = pattern && f.title.match(pattern) && mark(f) ? '#ee00ee' : f.color;");
+                writer.println("\t\t\t\tc.fillRect((f.left - x0) * px, y, f.width * px, 15);");
+                writer.println();
+                writer.println("\t\t\t\tif (f.width * px >= 21) {");
+                writer.println("\t\t\t\t\tconst chars = Math.floor(f.width * px / 7);");
+                writer.println("\t\t\t\t\tconst title = f.title.length <= chars ? f.title : f.title.substring(0, chars - 2) + '..';");
+                writer.println("\t\t\t\t\tc.fillStyle = '#000000';");
+                writer.println("\t\t\t\t\tc.fillText(title, Math.max(f.left - x0, 0) * px + 3, y + 12, f.width * px - 6);");
+                writer.println("\t\t\t\t}");
+                writer.println();
+                writer.println("\t\t\t\tif (alpha) {");
+                writer.println("\t\t\t\t\tc.fillStyle = 'rgba(255, 255, 255, 0.5)';");
+                writer.println("\t\t\t\t\tc.fillRect((f.left - x0) * px, y, f.width * px, 15);");
+                writer.println("\t\t\t\t}");
+                writer.println("\t\t\t}");
+                writer.println("\t\t}");
+                writer.println();
+                writer.println("\t\tfor (let h = 0; h < levels.length; h++) {");
+                writer.println("\t\t\tconst y = reverse ? h * 16 : canvasHeight - (h + 1) * 16;");
+                writer.println("\t\t\tconst frames = levels[h];");
+                writer.println("\t\t\tfor (let i = 0; i < frames.length; i++) {");
+                writer.println("\t\t\t\tdrawFrame(frames[i], y, h < rootLevel);");
+                writer.println("\t\t\t}");
+                writer.println("\t\t}");
+                writer.println();
+                writer.println("\t\treturn totalMarked();");
+                writer.println("\t}");
+                writer.println();
+                writer.println("\tcanvas.onmousemove = function() {");
+                writer.println("\t\tconst h = Math.floor((reverse ? event.offsetY : (canvasHeight - event.offsetY)) / 16);");
+                writer.println("\t\tif (h >= 0 && h < levels.length) {");
+                writer.println("\t\t\tconst f = findFrame(levels[h], event.offsetX / px + root.left);");
+                writer.println("\t\t\tif (f) {");
+                writer.println("\t\t\t\thl.style.left = (Math.max(f.left - root.left, 0) * px + canvas.offsetLeft) + 'px';");
+                writer.println("\t\t\t\thl.style.width = (Math.min(f.width, root.width) * px) + 'px';");
+                writer.println("\t\t\t\thl.style.top = ((reverse ? h * 16 : canvasHeight - (h + 1) * 16) + canvas.offsetTop) + 'px';");
+                writer.println("\t\t\t\thl.firstChild.textContent = f.title;");
+                writer.println("\t\t\t\thl.style.display = 'block';");
+                writer.println("\t\t\t\tcanvas.title = f.title + '\\n(' + samples(f.width) + f.details + ', ' + pct(f.width, levels[0][0].width) + '%)';");
+                writer.println("\t\t\t\tcanvas.style.cursor = 'pointer';");
+                writer.println("\t\t\t\tcanvas.onclick = function() {");
+                writer.println("\t\t\t\t\tif (f != root) {");
+                writer.println("\t\t\t\t\t\trender(f, h);");
+                writer.println("\t\t\t\t\t\tcanvas.onmousemove();");
+                writer.println("\t\t\t\t\t}");
+                writer.println("\t\t\t\t};");
+                writer.println("\t\t\t\tstatus.textContent = 'Function: ' + canvas.title;");
+                writer.println("\t\t\t\treturn;");
+                writer.println("\t\t\t}");
+                writer.println("\t\t}");
+                writer.println("\t\tcanvas.onmouseout();");
+                writer.println("\t}");
+                writer.println();
+                writer.println("\tcanvas.onmouseout = function() {");
+                writer.println("\t\thl.style.display = 'none';");
+                writer.println("\t\tstatus.textContent = '\\xa0';");
+                writer.println("\t\tcanvas.title = '';");
+                writer.println("\t\tcanvas.style.cursor = '';");
+                writer.println("\t\tcanvas.onclick = '';");
+                writer.println("\t}");
+                writer.println();
+                writer.println("\tdocument.getElementById('reverse').onclick = function() {");
+                writer.println("\t\treverse = !reverse;");
+                writer.println("\t\trender();");
+                writer.println("\t}");
+                writer.println();
+                writer.println("\tdocument.getElementById('search').onclick = function() {");
+                writer.println("\t\tsearch(true);");
+                writer.println("\t}");
+                writer.println();
+                writer.println("\tdocument.getElementById('reset').onclick = function() {");
+                writer.println("\t\tsearch(false);");
+                writer.println("\t}");
+                writer.println();
+                writer.println("\twindow.onkeydown = function() {");
+                writer.println("\t\tif (event.ctrlKey && event.keyCode === 70) {");
+                writer.println("\t\t\tevent.preventDefault();");
+                writer.println("\t\t\tsearch(true);");
+                writer.println("\t\t} else if (event.keyCode === 27) {");
+                writer.println("\t\t\tsearch(false);");
+                writer.println("\t\t}");
+                writer.println("\t}");
+                writer.println();
                 
-                // Control options
-                writer.println("        <div class=\"controls\">");
-                writer.println("            <div class=\"control-item\">");
-                writer.println("                <button id=\"zoomIn\">Zoom In</button>");
-                writer.println("                <button id=\"zoomOut\">Zoom Out</button>");
-                writer.println("                <button id=\"resetZoom\">Reset</button>");
-                writer.println("            </div>");
-                writer.println("            <div class=\"control-item\">");
-                writer.println("                <label for=\"filterEventType\">Event Type Filter:</label>");
-                writer.println("                <select id=\"filterEventType\">");
-                writer.println("                    <option value=\"all\">All</option>");
-                writer.println("                    <option value=\"CPU\">CPU</option>");
-                writer.println("                    <option value=\"ALLOC\">Memory Allocation</option>");
-                writer.println("                    <option value=\"LOCK\">Lock Contention</option>");
-                writer.println("                    <option value=\"CACHE_MISSES\">Cache Misses</option>");
-                writer.println("                </select>");
-                writer.println("            </div>");
-                writer.println("        </div>");
+                // Process stack traces and generate f() calls
+                processStackTraces(writer, stackTraces);
                 
-                // Statistics information
-                int totalSamples = stackTraces.values().stream().mapToInt(Integer::intValue).sum();
-                writer.println("        <div class=\"stats\">");
-                writer.println("            <p><strong>Total Samples:</strong> " + totalSamples + "</p>");
-                writer.println("            <p><strong>Stack Frames:</strong> " + stackTraces.size() + "</p>");
-                writer.println("            <p><strong>Generation Time:</strong> " + HTML_DATE_TIME_FORMATTER.format(LocalDateTime.now()) + "</p>");
-                writer.println("        </div>");
-                
-                // Flame graph container
-                writer.println("        <div class=\"flame-container\" id=\"flameContainer\">");
-                
-                // Build flame graph data structure
-                Map<String, Integer> frameCountMap = new HashMap<>();
-                Map<String, Set<String>> frameParentMap = new HashMap<>();
-                
-                // Parse stack traces and build hierarchy
-                for (Map.Entry<String, Integer> entry : stackTraces.entrySet()) {
-                    String stackTrace = entry.getKey();
-                    int count = entry.getValue();
-                    
-                    String[] frames = stackTrace.split(";\\\\\\\\");
-                    for (int i = 0; i < frames.length; i++) {
-                        String frame = frames[i].trim();
-                        if (!frame.isEmpty()) {
-                            // Count occurrences of each frame
-                            frameCountMap.put(frame, frameCountMap.getOrDefault(frame, 0) + count);
-                            
-                            // Record parent-child relationships
-                            if (i > 0) {
-                                String parent = frames[i - 1].trim();
-                                if (!parent.isEmpty()) {
-                                    frameParentMap.computeIfAbsent(parent, k -> new HashSet<>()).add(frame);
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // Build flame graph HTML
-                generateFlameHtml(writer, frameCountMap, frameParentMap);
-                
-                writer.println("        </div>");
-                
-                // Legend
-                writer.println("        <div class=\"legend\">");
-                writer.println("            <h3>Legend</h3>");
-                writer.println("            <div class=\"legend-item\"><span class=\"legend-color event-cpu\"></span> CPU Events</div>");
-                writer.println("            <div class=\"legend-item\"><span class=\"legend-color event-alloc\"></span> Memory Allocation Events</div>");
-                writer.println("            <div class=\"legend-item\"><span class=\"legend-color event-lock\"></span> Lock Contention Events</div>");
-                writer.println("            <div class=\"legend-item\"><span class=\"legend-color event-cache-misses\"></span> Cache Miss Events</div>");
-                writer.println("        </div>");
-                
-                // Tooltip
-                writer.println("        <div class=\"tooltip\" id=\"tooltip\"></div>");
-                
-                // Detailed information display area
-                writer.println("        <div class=\"frame-info\" id=\"frameInfo\">");
-                writer.println("            <pre>Click on a frame in the flame graph to view details</pre>");
-                writer.println("        </div>");
-                
-                writer.println("        <div class=\"footer\">");
-                writer.println("            <p>This report was automatically generated by API Monitor Spring Boot Starter</p>");
-                writer.println("        </div>");
-                writer.println("    </div>");
-                
-                // JavaScript functionality
-                writer.println("    <script>");
-                writer.println("        // Get DOM elements");
-                writer.println("        const flameContainer = document.getElementById('flameContainer');");
-                writer.println("        const tooltip = document.getElementById('tooltip');");
-                writer.println("        const filterEventType = document.getElementById('filterEventType');");
-                writer.println("        const zoomInBtn = document.getElementById('zoomIn');");
-                writer.println("        const zoomOutBtn = document.getElementById('zoomOut');");
-                writer.println("        const resetZoomBtn = document.getElementById('resetZoom');");
-                writer.println("        const frameInfo = document.getElementById('frameInfo');");
-                writer.println("        const cells = document.querySelectorAll('.flame-cell');");
-                
-                // Zoom functionality
-                writer.println("        let currentScale = 1;");
-                writer.println("        const SCALE_FACTOR = 1.2;");
-                writer.println("        const MAX_SCALE = 3;");
-                writer.println("        const MIN_SCALE = 0.5;");
-                
-                writer.println("        function applyScale() {");
-                writer.println("            flameContainer.style.transform = `scale(${currentScale})`;");
-                writer.println("            flameContainer.style.transformOrigin = 'top left';");
-                writer.println("        }");
-                
-                // Frame click functionality - show details and highlight
-                writer.println("        cells.forEach(cell => {");
-                writer.println("            cell.addEventListener('click', () => {");
-                writer.println("                const info = cell.getAttribute('data-info');");
-                writer.println("                frameInfo.querySelector('pre').textContent = info;");
-                
-                // Highlight selected frame
-                writer.println("                // Remove previous highlight");
-                writer.println("                cells.forEach(c => {");
-                writer.println("                    c.style.outline = 'none';");
-                writer.println("                    c.style.opacity = '1';");
-                writer.println("                });");
-                writer.println("                // Add highlight");
-                writer.println("                cell.style.outline = '2px solid #fff';");
-                writer.println("                cell.style.outlineOffset = '2px';");
-                writer.println("                cell.style.opacity = '0.8';");
-                writer.println("                ");
-                // Auto-scroll to selected frame
-                writer.println("                cell.scrollIntoView({ behavior: 'smooth', block: 'center' });");
-                writer.println("            });");
-                
-                // Enhanced hover effects
-                writer.println("            cell.addEventListener('mouseenter', () => {");
-                writer.println("                cell.style.opacity = '0.8';");
-                writer.println("                cell.style.cursor = 'pointer';");
-                writer.println("            });");
-                
-                writer.println("            cell.addEventListener('mouseleave', () => {");
-                writer.println("                // Restore opacity only if not selected");
-                writer.println("                if (!cell.style.outline) {");
-                writer.println("                    cell.style.opacity = '1';");
-                writer.println("                }");
-                writer.println("                cell.style.cursor = 'default';");
-                writer.println("            });");
-                writer.println("        });");
-                
-                // Enhanced event type filtering functionality
-                writer.println("        filterEventType.addEventListener('change', () => {");
-                writer.println("            const selectedType = filterEventType.value;");
-                
-                writer.println("            cells.forEach(cell => {");
-                writer.println("                if (selectedType === 'all') {");
-                writer.println("                    cell.style.display = 'flex';");
-                writer.println("                } else {");
-                writer.println("                    // Check event type and text match");
-                writer.println("                    const hasEventTypeClass = cell.classList.contains('event-' + selectedType.toLowerCase());");
-                writer.println("                    const cellText = cell.textContent;");
-                writer.println("                    const textStartsWith = cellText.startsWith(selectedType + '|');");
-                
-                writer.println("                    cell.style.display = (hasEventTypeClass || textStartsWith) ? 'flex' : 'none';");
-                writer.println("                }");
-                writer.println("            });");
-                writer.println("        });");
-                
-                // Optimized zoom button events
-                writer.println("        zoomInBtn.addEventListener('click', () => {");
-                writer.println("            if (currentScale < MAX_SCALE) {");
-                writer.println("                currentScale *= SCALE_FACTOR;");
-                writer.println("                applyScale();");
-                writer.println("            }");
-                writer.println("        });");
-                
-                writer.println("        zoomOutBtn.addEventListener('click', () => {");
-                writer.println("            if (currentScale > MIN_SCALE) {");
-                writer.println("                currentScale /= SCALE_FACTOR;");
-                writer.println("                applyScale();");
-                writer.println("            }");
-                writer.println("        });");
-                
-                writer.println("        resetZoomBtn.addEventListener('click', () => {");
-                writer.println("            currentScale = 1;");
-                writer.println("            applyScale();");
-                writer.println("        });");
-                
-                // Preserve original tooltip functionality
-                writer.println("        // Display details on mouse hover");
-                writer.println("        flameContainer.addEventListener('mouseover', (e) => {");
-                writer.println("            const target = e.target;");
-                writer.println("            if (target.classList.contains('flame-cell')) {");
-                writer.println("                const info = target.getAttribute('data-info');");
-                writer.println("                tooltip.textContent = info;");
-                writer.println("                tooltip.style.display = 'block';");
-                writer.println("                ");
-                writer.println("                // Calculate tooltip position");
-                writer.println("                tooltip.style.left = (e.pageX + 10) + 'px';");
-                writer.println("                tooltip.style.top = (e.pageY - 30) + 'px';");
-                writer.println("            }");
-                writer.println("        });");
-                
-                writer.println("        flameContainer.addEventListener('mouseout', (e) => {");
-                writer.println("            if (e.target.classList.contains('flame-cell')) {");
-                writer.println("                tooltip.style.display = 'none';");
-                writer.println("            }");
-                writer.println("        });");
-                
-                writer.println("        // Update tooltip position on mouse movement");
-                writer.println("        flameContainer.addEventListener('mousemove', (e) => {");
-                writer.println("            if (tooltip.style.display === 'block') {");
-                writer.println("                tooltip.style.left = (e.pageX + 10) + 'px';");
-                writer.println("                tooltip.style.top = (e.pageY - 30) + 'px';");
-                writer.println("            }");
-                writer.println("        });");
-                
-                // Initialization: display current event type
-                writer.println("        // Set default selection to current event type");
-                writer.println("        const currentEventType = '${properties.getFlameGraph().getEventType().name()}';");
-                writer.println("        const option = filterEventType.querySelector('option[value=\"' + currentEventType + '\"]');");
-                writer.println("        if (option) {");
-                writer.println("            option.selected = true;");
-                writer.println("        }");
-                writer.println("    </script>");
+                // Initialize and render
+                writer.println("\t// Initialize and render");
+                writer.println("\tif (levels[0].length > 0) {");
+                writer.println("\t\troot = levels[0][0];");
+                writer.println("\t\trootLevel = 0;");
+                writer.println("\t\tpx = canvasWidth / root.width;");
+                writer.println("\t\trender();");
+                writer.println("\t}");
+                writer.println("</script>");
                 writer.println("</body>");
                 writer.println("</html>");
             }
@@ -501,117 +533,139 @@ public class FlameGraphGenerator implements DisposableBean {
     }
     
     /**
-     * Recursively generate flame graph HTML structure
+     * Process stack traces and generate f() function calls for JavaScript
      */
-    private void generateFlameHtml(PrintWriter writer, Map<String, Integer> frameCountMap, Map<String, Set<String>> frameParentMap) {
-        // Find root frames (frames without parent frames)
-        Set<String> allFrames = new HashSet<>(frameCountMap.keySet());
-        Set<String> childFrames = new HashSet<>();
+    private void processStackTraces(PrintWriter writer, Map<String, Integer> stackTraces) {
+        logger.debug("Processing {} stack traces", stackTraces.size());
         
-        for (Set<String> children : frameParentMap.values()) {
-            childFrames.addAll(children);
+        // 计算总样本数
+        int totalSamples = stackTraces.values().stream().mapToInt(Integer::intValue).sum();
+        logger.debug("Total samples: {}", totalSamples);
+        
+        // 直接为每个堆栈跟踪生成HTML数据
+        // 为了简单起见，我们将所有堆栈跟踪合并到一个层次结构中
+        
+        // 首先写入根节点
+        writer.println("f(0, 0, " + totalSamples + ", 3, 'all');");
+        
+        // 处理每个堆栈跟踪
+        int currentLeft = 0;
+        
+        for (Map.Entry<String, Integer> entry : stackTraces.entrySet()) {
+            String stack = entry.getKey();
+            int count = entry.getValue();
+            logger.debug("Processing stack: {} with count: {}", stack, count);
+            
+            // 按分号分割堆栈帧
+            String[] frames = stack.split(";\\s*");
+            
+            if (frames.length > 0) {
+                // 处理第一帧，提取类型（如CPU|main -> main）
+                String firstFrame = frames[0];
+                if (firstFrame.contains("|")) {
+                    firstFrame = firstFrame.substring(firstFrame.indexOf("|") + 1);
+                }
+                
+                // 写入第一帧（通常是main）
+                writer.println("f(1, " + currentLeft + ", " + count + ", 3, '" + escapeString(firstFrame) + "');");
+                
+                // 写入所有子帧
+                for (int i = 1; i < frames.length; i++) {
+                    String frame = frames[i].trim();
+                    if (!frame.isEmpty()) {
+                        writer.println("f(" + (i + 1) + ", " + currentLeft + ", " + count + ", 3, '" + escapeString(frame) + "');");
+                    }
+                }
+                
+                currentLeft += count;
+            }
         }
         
-        Set<String> rootFrames = new HashSet<>(allFrames);
-        rootFrames.removeAll(childFrames);
-        
-        // Sort root frames by occurrence count
-        List<String> sortedRootFrames = new ArrayList<>(rootFrames);
-        sortedRootFrames.sort((a, b) -> Integer.compare(frameCountMap.get(b), frameCountMap.get(a)));
-        
-        // Calculate total width (based on sample count)
-        int totalWidth = 10000; // Base width
-        
-        // Generate each row
-        int yPosition = 0;
-        
-        // Recursively render flame graph
-        for (String rootFrame : sortedRootFrames) {
-            renderFrameRow(writer, rootFrame, 0, totalWidth, yPosition, frameCountMap, frameParentMap);
-            yPosition += 23; // Line height + 1px spacing
-        }
+        logger.debug("Completed generating frame calls for all stack traces");
     }
     
     /**
-     * Render a single frame row
+     * Recursively generate f() function calls for frames
      */
-    private void renderFrameRow(PrintWriter writer, String frame, int x, int width, int y, 
-                               Map<String, Integer> frameCountMap, Map<String, Set<String>> frameParentMap) {
-        // Get frame count
-        int count = frameCountMap.getOrDefault(frame, 1);
+    private int generateFrameCalls(PrintWriter writer, Map<String, Map<String, Integer>> frameHierarchy, 
+                                  String parentKey, int level, int left, int totalSamples) {
+        if (!frameHierarchy.containsKey(parentKey)) {
+            logger.debug("No children for frame: {}", parentKey);
+            return 0;
+        }
         
-        // Add different CSS classes for different frame types
-        String cssClass = "flame-cell";
+        Map<String, Integer> children = frameHierarchy.get(parentKey);
+        int currentPosition = left;
         
-        // Add class based on event type
-        if (frame.startsWith("CPU|")) {
-            cssClass += " event-cpu";
-        } else if (frame.startsWith("ALLOC|")) {
-            cssClass += " event-alloc";
-        } else if (frame.startsWith("LOCK|")) {
-            cssClass += " event-lock";
-        } else if (frame.startsWith("CACHE_MISSES|")) {
-            cssClass += " event-cache-misses";
+        // For root, create a level 0 frame that represents the total
+        if (parentKey.equals("root")) {
+            // Write f() call for the root level (level 0)
+            writer.println(String.format("\tf(%d, %d, %d, %d, '%s');", 
+                0, left, totalSamples, 3, "all"));
+            logger.debug("Generated root frame with total samples: {}", totalSamples);
         } else {
-            // Add color class based on package name
-            if (frame.contains(".java.")) {
-                cssClass += " pkg-java";
-            } else if (frame.contains(".com.")) {
-                cssClass += " pkg-com";
-            } else if (frame.contains(".org.")) {
-                cssClass += " pkg-org";
-            } else if (frame.contains(".io.")) {
-                cssClass += " pkg-io";
-            } else if (frame.contains(".javax.")) {
-                cssClass += " pkg-javax";
-            } else {
-                cssClass += " pkg-other";
+            // For non-root frames, find the count from parent's children map
+            int frameCount = 0;
+            for (Map.Entry<String, Map<String, Integer>> entry : frameHierarchy.entrySet()) {
+                if (entry.getValue().containsKey(parentKey)) {
+                    frameCount = entry.getValue().get(parentKey);
+                    break;
+                }
             }
+            
+            // If we can't find the count, use the sum of children's counts as fallback
+            if (frameCount == 0 && !children.isEmpty()) {
+                frameCount = children.values().stream().mapToInt(Integer::intValue).sum();
+            }
+            
+            // Ensure frameCount is at least 1 to ensure it's visible
+            if (frameCount == 0) {
+                frameCount = 1;
+            }
+            
+            // Write f() call for this frame at the current level
+            writer.println(String.format("\tf(%d, %d, %d, %d, '%s');", 
+                level, left, frameCount, 3, escapeString(parentKey)));
+            logger.debug("Generated frame at level {}: {} with count: {}", level, parentKey, frameCount);
         }
         
-        // Generate frame HTML
-        writer.println("            <div class=\"flame-row\" style=\"top: " + y + "px\">");
-        writer.println("                <div class=\"" + cssClass + "\" ");
-        writer.println("                     style=\"left: " + x + "px; width: " + width + "px;\" ");
-        writer.println("                     data-info=\"Frame: " + frame + "\nCount: " + count + "\" ");
-        writer.println("                >");
-        
-        // Limit displayed text length
-        String displayText = frame;
-        if (displayText.length() > 40) {
-            displayText = displayText.substring(0, 37) + "...";
-        }
-        
-        writer.println("                    " + displayText);
-        writer.println("                </div>");
-        writer.println("            </div>");
-        
-        // Recursively render child frames
-        Set<String> children = frameParentMap.get(frame);
-        if (children != null && !children.isEmpty()) {
-            // Sort child frames by count
-            List<String> sortedChildren = new ArrayList<>(children);
-            sortedChildren.sort((a, b) -> Integer.compare(frameCountMap.get(b), frameCountMap.get(a)));
+        // Process children
+        for (Map.Entry<String, Integer> entry : children.entrySet()) {
+            String frame = entry.getKey();
+            int count = entry.getValue();
             
-            // Calculate width for each child frame
-            int childX = x;
-            int totalChildCount = sortedChildren.stream().mapToInt(child -> frameCountMap.getOrDefault(child, 0)).sum();
-            
-            for (String child : sortedChildren) {
-                int childCount = frameCountMap.getOrDefault(child, 1);
-                int childWidth = (int)((double)childCount / totalChildCount * width);
+            // Skip event type frames or internal frames
+            if (!frame.startsWith("[not_walkable_") && !frame.equals("[unknown]")) {
+                // Process nested children first to get correct width
+                int childWidth = generateFrameCalls(writer, frameHierarchy, frame, level + 1, currentPosition, totalSamples);
                 
-                // Ensure minimum width
-                if (childWidth < 2) {
-                    childWidth = 2;
+                // If childWidth is 0, use the count as width (this is a leaf node)
+                if (childWidth == 0) {
+                    childWidth = count;
                 }
                 
-                renderFrameRow(writer, child, childX, childWidth, y + 23, frameCountMap, frameParentMap);
-                childX += childWidth;
+                currentPosition += childWidth;
             }
         }
+        
+        // Return the total width occupied by this node and its children
+        int totalWidth = currentPosition - left;
+        logger.debug("Total width for frame {}: {}", parentKey, totalWidth);
+        return totalWidth;
     }
     
+    /**
+     * Escape string for JavaScript
+     */
+    private String escapeString(String str) {
+        return str.replace("'", "\\'")
+                 .replace("\\", "\\\\")
+                 .replace("\n", "\\n")
+                 .replace("\r", "\\r")
+                 .replace("\t", "\\t");
+    }
+    
+
     /**
      * Generate SVG format flame graph
      */
@@ -843,7 +897,7 @@ public class FlameGraphGenerator implements DisposableBean {
                 
                 for (int i = 0; i < sortedEntries.size(); i++) {
                     Map.Entry<String, Integer> entry = sortedEntries.get(i);
-                    String[] frames = entry.getKey().split(";\\\\");
+                    String[] frames = entry.getKey().split(";\\");
                     // Ensure correct splitting of stack frames
                     
                     writer.println("    {");
@@ -905,34 +959,45 @@ public class FlameGraphGenerator implements DisposableBean {
         public void run() {
             try {
                 if (!running.get()) {
+                    logger.debug("Profiler task for requestId={} is not running, skipping", requestId);
                     return;
                 }
 
                 // Check if sampling duration is reached
                 if (System.currentTimeMillis() - startTime > duration) {
+                    logger.debug("Profiler task for requestId={} reached duration limit, stopping", requestId);
                     stop();
                     return;
                 }
 
                 // Execute different analysis logic based on event type
+                logger.trace("Executing analysis for requestId={}, eventType={}", requestId, eventType);
                 switch (eventType) {
                     case CPU:
                         analyzeCpuUsage();
+                        logger.trace("CPU analysis completed for requestId={}", requestId);
                         break;
                     case ALLOC:
                         analyzeMemoryAllocation();
+                        logger.trace("Memory allocation analysis completed for requestId={}", requestId);
                         break;
                     case LOCK:
                         analyzeLockContention();
+                        logger.trace("Lock contention analysis completed for requestId={}", requestId);
                         break;
                     case CACHE_MISSES:
                         analyzeCacheMisses();
+                        logger.trace("Cache misses analysis completed for requestId={}", requestId);
                         break;
                     default:
+                        logger.warn("Unknown eventType: {}, defaulting to CPU analysis for requestId={}", eventType, requestId);
                         analyzeCpuUsage(); // Use CPU analysis by default
                 }
+                logger.debug("Analysis iteration completed for requestId={}, collected {} stack traces", 
+                            requestId, stackTraces.size());
             } catch (Exception e) {
-                logger.error("Performance analysis sampling failed: {}", e.getMessage(), e);
+                logger.error("Performance analysis sampling failed for requestId={}: {}", 
+                           requestId, e.getMessage(), e);
             }
         }
 
